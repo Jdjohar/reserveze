@@ -14,7 +14,10 @@ import {
   Mail,
   MessageSquare,
   Settings,
-  Trash2
+  Trash2,
+  Check,
+  X,
+  ShieldCheck
 } from 'lucide-react';
 
 interface DBAppointment {
@@ -39,10 +42,41 @@ const HOLIDAYS = [
 
 export default function MerchantCalendar() {
   const [appointments, setAppointments] = useState<DBAppointment[]>([]);
+  const [selectedAppt, setSelectedAppt] = useState<DBAppointment | null>(null);
+  const [showApptDetailModal, setShowApptDetailModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showCalModal, setShowCalModal] = useState(false);
   const [editingCal, setEditingCal] = useState<any>(null);
   const [errorCalModal, setErrorCalModal] = useState('');
+
+  const handleApptClick = (apptId: string) => {
+    const found = appointments.find(a => a._id === apptId);
+    if (found) {
+      setSelectedAppt(found);
+      setShowApptDetailModal(true);
+    }
+  };
+
+  const handleUpdateApptStatus = async (apptId: string, newStatus: string) => {
+    try {
+      const res = await fetch(`/api/appointments/${apptId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAppointments(appointments.map(a => a._id === apptId ? { ...a, status: newStatus } : a));
+        setShowApptDetailModal(false);
+        setSelectedAppt(null);
+      } else {
+        alert(data.error || 'Failed to update status.');
+      }
+    } catch (err) {
+      console.error('Update status error:', err);
+      alert('Network error.');
+    }
+  };
   const [showSidebar, setShowSidebar] = useState(true);
   const [createCount, setCreateCount] = useState(1);
   const [importFromId, setImportFromId] = useState('');
@@ -51,6 +85,7 @@ export default function MerchantCalendar() {
   const [selectedService, setSelectedService] = useState('all');
   const [baseDate, setBaseDate] = useState(new Date());
 
+  const [isRestrictedManager, setIsRestrictedManager] = useState(false);
   const [currentView, setCurrentView] = useState<'day' | 'week' | 'month'>('week');
 
   // Dynamically calculate days range according to currentView
@@ -121,7 +156,16 @@ export default function MerchantCalendar() {
     if (dbCalendars.length > 0) {
       setSelectedCalendarIds(prev => {
         if (prev.length === 0) {
-          return dbCalendars.map(c => c._id);
+          const isRestricted = typeof window !== 'undefined' && !!localStorage.getItem('assigned_calendar_ids');
+          if (isRestricted) {
+            return dbCalendars.map(c => c._id);
+          } else {
+            const primaryCalId = dbCalendars.reduce((oldest, current) => {
+              if (!oldest) return current._id;
+              return current._id < oldest ? current._id : oldest;
+            }, '');
+            return primaryCalId ? [primaryCalId] : [];
+          }
         }
         return prev.filter(id => dbCalendars.some(c => c._id === id));
       });
@@ -147,7 +191,15 @@ export default function MerchantCalendar() {
         const apptRes = await fetch(apptUrl);
         const apptData = await apptRes.json();
         if (apptData.success) {
-          setAppointments(apptData.appointments);
+          let list = apptData.appointments;
+          if (typeof window !== 'undefined') {
+            const rawAssigned = localStorage.getItem('assigned_calendar_ids');
+            if (rawAssigned) {
+              const assignedIds: string[] = JSON.parse(rawAssigned);
+              list = list.filter((a: any) => assignedIds.includes(a.calendarId));
+            }
+          }
+          setAppointments(list);
         }
 
         // Fetch services
@@ -163,7 +215,15 @@ export default function MerchantCalendar() {
         const calRes = await fetch(calUrl);
         const calData = await calRes.json();
         if (calData.success) {
-          setDbCalendars(calData.calendars);
+          let list = calData.calendars;
+          if (typeof window !== 'undefined') {
+            const rawAssigned = localStorage.getItem('assigned_calendar_ids');
+            if (rawAssigned) {
+              const assignedIds: string[] = JSON.parse(rawAssigned);
+              list = list.filter((c: any) => assignedIds.includes(c._id));
+            }
+          }
+          setDbCalendars(list);
         }
 
         // Fetch clients
@@ -180,6 +240,12 @@ export default function MerchantCalendar() {
       }
     };
     fetchCalendarData();
+    if (typeof window !== 'undefined') {
+      const rawAssigned = localStorage.getItem('assigned_calendar_ids');
+      if (rawAssigned) {
+        setIsRestrictedManager(true);
+      }
+    }
   }, []);
 
   const [showNewApptModal, setShowNewApptModal] = useState(false);
@@ -294,6 +360,10 @@ export default function MerchantCalendar() {
   };
 
   const handleSaveCalendar = async () => {
+    if (isRestrictedManager) {
+      alert("Permission Denied: Location managers are not authorized to create or edit location details.");
+      return;
+    }
     const isEdit = !!editingCal._id;
     if ((isEdit || createCount === 1) && !editingCal.name) {
       setErrorCalModal('Location / Branch Name is required.');
@@ -323,7 +393,16 @@ export default function MerchantCalendar() {
         if (isEdit) {
           setDbCalendars(dbCalendars.map(c => c._id === editingCal._id ? data.calendar : c));
         } else {
-          setDbCalendars([...dbCalendars, ...data.calendars]);
+          const newCals = data.calendars || (data.calendar ? [data.calendar] : []);
+          setDbCalendars([...dbCalendars, ...newCals]);
+          if (typeof window !== 'undefined') {
+            const rawAssigned = localStorage.getItem('assigned_calendar_ids');
+            if (rawAssigned) {
+              const assignedIds: string[] = JSON.parse(rawAssigned);
+              const newIds = newCals.map((c: any) => c._id);
+              localStorage.setItem('assigned_calendar_ids', JSON.stringify([...assignedIds, ...newIds]));
+            }
+          }
         }
         setShowCalModal(false);
       } else {
@@ -336,6 +415,10 @@ export default function MerchantCalendar() {
   };
 
   const handleDeleteCalendar = async (id: string) => {
+    if (isRestrictedManager) {
+      alert("Permission Denied: Location managers are not authorized to delete locations.");
+      return;
+    }
     if (!confirm('Are you sure you want to permanently delete this calendar location? This action cannot be undone.')) return;
 
     try {
@@ -523,12 +606,14 @@ export default function MerchantCalendar() {
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <h4 className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Active Calendars</h4>
-                <button 
-                  onClick={handleCreateCalendarClick}
-                  className="text-[10px] font-extrabold text-primary hover:underline flex items-center gap-0.5"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Add
-                </button>
+                {!isRestrictedManager && (
+                  <button 
+                    onClick={handleCreateCalendarClick}
+                    className="text-[10px] font-extrabold text-primary hover:underline flex items-center gap-0.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add
+                  </button>
+                )}
               </div>
               <div className="space-y-2">
                 {dbCalendars.length === 0 ? (
@@ -554,26 +639,28 @@ export default function MerchantCalendar() {
                             <span className="ml-1 text-[8px] bg-primary/10 text-primary px-1 py-0.5 rounded font-extrabold uppercase scale-90 whitespace-nowrap">Primary</span>
                           )}
                         </label>
-                        <div className="flex items-center gap-0.5 opacity-0 group-hover/cal:opacity-100 transition-opacity">
-                          <button 
-                            type="button"
-                            onClick={() => handleEditCalendar(cal)} 
-                            className="p-1 hover:bg-surface-container rounded"
-                            title="Edit Location Settings"
-                          >
-                            <Settings className="w-3.5 h-3.5 text-on-surface-variant hover:text-on-surface" />
-                          </button>
-                          {cal._id !== primaryCalId && dbCalendars.length > 1 && (
+                        {!isRestrictedManager && (
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover/cal:opacity-100 transition-opacity">
                             <button 
                               type="button"
-                              onClick={() => handleDeleteCalendar(cal._id)} 
-                              className="p-1 hover:bg-red-500/10 rounded"
-                              title="Delete Location Branch"
+                              onClick={() => handleEditCalendar(cal)} 
+                              className="p-1 hover:bg-surface-container rounded"
+                              title="Edit Location Settings"
                             >
-                              <Trash2 className="w-3.5 h-3.5 text-red-500 hover:text-red-700" />
+                              <Settings className="w-3.5 h-3.5 text-on-surface-variant hover:text-on-surface" />
                             </button>
-                          )}
-                        </div>
+                            {cal._id !== primaryCalId && dbCalendars.length > 1 && (
+                              <button 
+                                type="button"
+                                onClick={() => handleDeleteCalendar(cal._id)} 
+                                className="p-1 hover:bg-red-500/10 rounded"
+                                title="Delete Location Branch"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-red-500 hover:text-red-700" />
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ));
                   })()
@@ -684,7 +771,8 @@ export default function MerchantCalendar() {
                         {apptsForDay.map(appt => (
                           <div 
                             key={appt.id} 
-                            className={`p-1 text-[8px] rounded border ${appt.color} truncate leading-tight`} 
+                            onClick={() => handleApptClick(appt.id)}
+                            className={`p-1 text-[8px] rounded border ${appt.color} truncate leading-tight cursor-pointer hover:opacity-80 transition-opacity`} 
                             title={`${appt.client} - ${appt.service}`}
                           >
                             <strong>{appt.time}</strong> {appt.client}
@@ -736,7 +824,10 @@ export default function MerchantCalendar() {
                             )}
 
                             {appt && (
-                              <div className={`absolute inset-x-1 top-1 z-10 rounded-lg p-2 border-l-4 border shadow-sm ${appt.color} ${appt.height} overflow-hidden cursor-pointer hover:shadow transition-all`}>
+                              <div 
+                                onClick={() => handleApptClick(appt.id)}
+                                className={`absolute inset-x-1 top-1 z-10 rounded-lg p-2 border-l-4 border shadow-sm ${appt.color} ${appt.height} overflow-hidden cursor-pointer hover:shadow transition-all`}
+                              >
                                 <div className="flex justify-between items-start">
                                   <h4 className="font-extrabold text-[10px] leading-tight truncate">{appt.client}</h4>
                                   <span className="text-[8px] opacity-75 shrink-0">
@@ -1122,6 +1213,100 @@ export default function MerchantCalendar() {
                 Book Appointment
               </button>
             </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Appointment Detail Modal */}
+      {showApptDetailModal && selectedAppt && (
+        <div className="fixed inset-0 z-50 bg-inverse-surface/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-surface-container-lowest border border-outline-variant/30 rounded-2xl p-6 shadow-xl space-y-4">
+            
+            <div className="flex justify-between items-center border-b border-outline-variant/20 pb-3">
+              <h3 className="font-extrabold text-sm">Appointment Details</h3>
+              <button 
+                onClick={() => {
+                  setShowApptDetailModal(false);
+                  setSelectedAppt(null);
+                }}
+                className="text-on-surface-variant hover:text-on-surface font-bold text-xs"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs text-on-surface">
+              {/* Service info */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-on-surface-variant uppercase">Booked Service</span>
+                <p className="font-bold text-sm text-on-surface">{selectedAppt.serviceName || 'Standard Service'}</p>
+              </div>
+
+              {/* Client Info */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-on-surface-variant uppercase">Client</span>
+                <p className="font-semibold text-on-surface">{selectedAppt.clientName || 'Mock Client'}</p>
+              </div>
+
+              {/* Date / Time */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-on-surface-variant uppercase">Date & Time</span>
+                <p className="font-medium text-on-surface flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-outline" />
+                  {new Date(selectedAppt.startTime).toLocaleString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </p>
+              </div>
+
+              {/* Status */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-on-surface-variant uppercase">Status</span>
+                <div>
+                  <span className={`text-[9px] font-extrabold border px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                    selectedAppt.status === 'CONFIRMED' ? 'bg-green-500/10 text-green-700 border-green-500/20' :
+                    selectedAppt.status === 'PENDING' ? 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20' :
+                    selectedAppt.status === 'COMPLETED' ? 'bg-blue-500/10 text-blue-700 border-blue-500/20' :
+                    'bg-red-500/10 text-red-700 border-red-500/20 border-red-500/20'
+                  }`}>
+                    {selectedAppt.status}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick action buttons */}
+            {(selectedAppt.status === 'PENDING' || selectedAppt.status === 'CONFIRMED') && (
+              <div className="flex gap-2 pt-3 border-t border-outline-variant/20">
+                {selectedAppt.status === 'PENDING' && (
+                  <button
+                    onClick={() => handleUpdateApptStatus(selectedAppt._id, 'CONFIRMED')}
+                    className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                  >
+                    <Check className="w-4 h-4" /> Approve
+                  </button>
+                )}
+                {selectedAppt.status === 'CONFIRMED' && (
+                  <button
+                    onClick={() => handleUpdateApptStatus(selectedAppt._id, 'COMPLETED')}
+                    className="flex-1 py-2.5 bg-primary hover:bg-primary-container text-on-primary rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                  >
+                    <ShieldCheck className="w-4 h-4" /> Complete
+                  </button>
+                )}
+                <button
+                  onClick={() => handleUpdateApptStatus(selectedAppt._id, 'CANCELLED')}
+                  className="flex-1 py-2.5 border border-red-500/30 hover:bg-red-500/5 text-red-600 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                >
+                  <X className="w-4 h-4" /> Cancel
+                </button>
+              </div>
+            )}
 
           </div>
         </div>

@@ -11,6 +11,12 @@ interface BusinessDetails {
   slug?: string;
 }
 
+interface CalendarDetails {
+  _id: string;
+  name: string;
+  slug?: string;
+}
+
 export default function MerchantShare() {
   const [business, setBusiness] = useState<BusinessDetails | null>(null);
   const [slugInput, setSlugInput] = useState('');
@@ -19,25 +25,76 @@ export default function MerchantShare() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Fetch business profile on mount
+  // Scoped sharing
+  const [isRestrictedManager, setIsRestrictedManager] = useState(false);
+  const [assignedCalendarIds, setAssignedCalendarIds] = useState<string[]>([]);
+  const [dbCalendars, setDbCalendars] = useState<CalendarDetails[]>([]);
+  const [selectedCalId, setSelectedCalId] = useState('');
+
+  // Fetch business profile and calendars
   useEffect(() => {
-    const fetchBusiness = async () => {
+    const fetchMetadata = async () => {
       try {
         const storedBizId = typeof window !== 'undefined' ? localStorage.getItem('merchant_business_id') : null;
         if (!storedBizId) return;
 
-        const res = await fetch(`/api/business?businessId=${storedBizId}`);
-        const data = await res.json();
-        if (data.success && data.business) {
-          setBusiness(data.business);
-          setSlugInput(data.business.slug || '');
+        // Load business details
+        const bizRes = await fetch(`/api/business?businessId=${storedBizId}`);
+        const bizData = await bizRes.json();
+        if (bizData.success && bizData.business) {
+          setBusiness(bizData.business);
+          setSlugInput(bizData.business.slug || '');
+        }
+
+        // Check restricted manager status
+        let rawAssigned: string[] = [];
+        if (typeof window !== 'undefined') {
+          const raw = localStorage.getItem('assigned_calendar_ids');
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setIsRestrictedManager(true);
+                setAssignedCalendarIds(parsed);
+                rawAssigned = parsed;
+              }
+            } catch {}
+          }
+        }
+
+        // Load calendars
+        const calRes = await fetch(`/api/calendars?businessId=${storedBizId}`);
+        const calData = await calRes.json();
+        if (calData.success) {
+          const list = calData.calendars || [];
+          setDbCalendars(list);
+
+          // Auto-select first location for manager
+          if (rawAssigned.length > 0) {
+            const matched = list.find((c: any) => rawAssigned.includes(c._id));
+            if (matched) {
+              setSelectedCalId(matched._id);
+            }
+          }
         }
       } catch (err) {
         console.error('Failed to load business profile:', err);
       }
     };
-    fetchBusiness();
+    fetchMetadata();
   }, []);
+
+  // Update slugInput when selectedCalId changes
+  useEffect(() => {
+    if (selectedCalId) {
+      const cal = dbCalendars.find(c => c._id === selectedCalId);
+      setSlugInput(cal?.slug || '');
+    } else {
+      setSlugInput(business?.slug || '');
+    }
+    setError('');
+    setSuccess('');
+  }, [selectedCalId, dbCalendars, business]);
 
   const handleSaveSlug = async () => {
     if (!business) return;
@@ -49,21 +106,37 @@ export default function MerchantShare() {
     const cleanSlug = slugInput.toLowerCase().replace(/[^a-z0-9-_]/g, '');
 
     try {
-      const res = await fetch('/api/business', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          businessId: business._id,
-          slug: cleanSlug
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setBusiness(data.business);
-        setSlugInput(data.business.slug || '');
-        setSuccess('Booking handle/slug updated successfully!');
+      if (selectedCalId) {
+        // Update calendar branch slug
+        const res = await fetch(`/api/calendars/${selectedCalId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slug: cleanSlug })
+        });
+        const data = await res.json();
+        if (data.success) {
+          setDbCalendars(dbCalendars.map(c => c._id === selectedCalId ? { ...c, slug: cleanSlug } : c));
+          setSuccess('Location booking slug updated successfully!');
+        } else {
+          setError(data.error || 'Failed to update location booking slug.');
+        }
       } else {
-        setError(data.error || 'Failed to update booking handle.');
+        // Update central business slug
+        const res = await fetch('/api/business', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            businessId: business._id,
+            slug: cleanSlug
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          setBusiness(data.business);
+          setSuccess('Booking handle/slug updated successfully!');
+        } else {
+          setError(data.error || 'Failed to update booking handle.');
+        }
       }
     } catch (err) {
       console.error('Failed to save slug:', err);
@@ -76,6 +149,13 @@ export default function MerchantShare() {
   const getBookingUrl = () => {
     if (typeof window === 'undefined') return '';
     const base = window.location.origin;
+
+    if (selectedCalId) {
+      const cal = dbCalendars.find(c => c._id === selectedCalId);
+      const handle = cal?.slug || cal?._id || selectedCalId;
+      return `${base}/booking/${handle}`;
+    }
+
     const handle = business?.slug || business?._id || 'mock-business';
     return `${base}/booking/${handle}`;
   };
@@ -109,14 +189,52 @@ export default function MerchantShare() {
             {/* Left Col: URL List & Slug Editor */}
             <div className="space-y-6">
               
+              {/* Select Scope/Location Dropdown */}
+              <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-6 space-y-4">
+                <h3 className="font-bold text-sm text-on-surface flex items-center gap-2">
+                  <Globe className="w-4.5 h-4.5 text-primary" />
+                  Select Booking Destination
+                </h3>
+                <p className="text-xs text-on-surface-variant leading-relaxed">
+                  Choose whether to generate booking links for the central business page or a specific calendar branch location.
+                </p>
+
+                <div className="w-full">
+                  {isRestrictedManager ? (
+                    <select
+                      value={selectedCalId}
+                      disabled
+                      className="w-full bg-surface-container text-xs rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none font-bold text-on-surface-variant opacity-75 cursor-not-allowed"
+                    >
+                      {dbCalendars.filter(cal => assignedCalendarIds.includes(cal._id)).map(cal => (
+                        <option key={cal._id} value={cal._id}>📍 {cal.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <select
+                      value={selectedCalId}
+                      onChange={(e) => setSelectedCalId(e.target.value)}
+                      className="w-full bg-surface-container-lowest text-xs rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none font-bold text-on-surface"
+                    >
+                      <option value="">🏢 Central Business Profile</option>
+                      {dbCalendars.map(cal => (
+                        <option key={cal._id} value={cal._id}>📍 {cal.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+
               {/* Unique Handle / Slug Editor */}
               <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-6 space-y-4">
                 <h3 className="font-bold text-sm text-on-surface flex items-center gap-2">
                   <Edit3 className="w-4 h-4 text-primary" />
-                  Customize Booking Slug
+                  {selectedCalId ? 'Customize Location Slug' : 'Customize Business Slug'}
                 </h3>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Establish a unique, readable booking address for your business cards and social bios.
+                  {selectedCalId 
+                    ? "Establish a unique, readable booking address for this specific branch location." 
+                    : "Establish a unique, readable booking address for your central business profile."}
                 </p>
 
                 <div className="space-y-2">
@@ -126,7 +244,7 @@ export default function MerchantShare() {
                       type="text"
                       value={slugInput}
                       onChange={(e) => setSlugInput(e.target.value)}
-                      placeholder="my-business-slug"
+                      placeholder={selectedCalId ? "branch-location-slug" : "my-business-slug"}
                       className="grow bg-transparent text-[11px] font-bold text-primary focus:outline-none placeholder-outline/50"
                     />
                   </div>
@@ -147,10 +265,10 @@ export default function MerchantShare() {
               <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-6 space-y-4">
                 <h3 className="font-bold text-sm text-on-surface flex items-center gap-2">
                   <LinkIcon className="w-4 h-4 text-primary" />
-                  Primary Calendar Link
+                  Primary Booking Link
                 </h3>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Provide this absolute link to allow clients to browse your full catalog, pick specialists, and self-schedule.
+                  Provide this absolute link to allow clients to browse your catalog, pick specialists, and self-schedule.
                 </p>
 
                 <div className="flex items-center gap-2 bg-surface-container p-2.5 rounded-lg border border-outline-variant/20">
@@ -163,16 +281,14 @@ export default function MerchantShare() {
                   </button>
                 </div>
                 
-                {business?.slug && (
-                  <a 
-                    href={bookingUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1 mt-1 justify-end"
-                  >
-                    <Globe className="w-3 h-3" /> Test Live Booking Page
-                  </a>
-                )}
+                <a 
+                  href={bookingUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1 mt-1 justify-end"
+                >
+                  <Globe className="w-3 h-3" /> Test Live Booking Page
+                </a>
               </div>
 
             </div>
@@ -190,7 +306,6 @@ export default function MerchantShare() {
                   Display this in your physical reception area to let walk-in clients scan and reserve slots on the fly.
                 </p>
                 <div className="w-36 h-36 bg-surface-container border border-outline-variant/30 rounded-lg flex items-center justify-center font-bold text-outline/30 text-xs relative">
-                  {/* Mock QR Code Pattern visual */}
                   <div className="absolute inset-4 border-2 border-primary/20 border-dashed rounded flex items-center justify-center text-[10px] text-primary">
                     [DYNAMIC QR CODE]
                   </div>

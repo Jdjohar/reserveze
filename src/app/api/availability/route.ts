@@ -32,3 +32,42 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, error: error.message || 'Database error' }, { status: 500 });
   }
 }
+
+export async function POST(req: NextRequest) {
+  try {
+    await connectToDatabase();
+    const body = await req.json();
+    const { calendarId, timezone, availabilities } = body;
+
+    if (!calendarId || !mongoose.Types.ObjectId.isValid(calendarId)) {
+      return NextResponse.json({ success: false, error: 'Valid calendarId is required' }, { status: 400 });
+    }
+
+    // 1. Update timezone in Calendar model
+    if (timezone) {
+      await Calendar.findByIdAndUpdate(calendarId, { timezone });
+    }
+
+    // 2. Save each day schedule
+    if (Array.isArray(availabilities)) {
+      for (const day of availabilities) {
+        const { dayOfWeek, isEnabled, startTime, endTime, breaks } = day;
+        await Availability.findOneAndUpdate(
+          { calendarId, dayOfWeek },
+          {
+            isEnabled,
+            startTime: startTime || '09:00',
+            endTime: endTime || '17:00',
+            breaks: Array.isArray(breaks) ? breaks : []
+          },
+          { upsert: true, new: true }
+        );
+      }
+    }
+
+    return NextResponse.json({ success: true, message: 'Availability saved successfully!' });
+  } catch (error: any) {
+    console.error('Failed to save availability:', error);
+    return NextResponse.json({ success: false, error: error.message || 'Database error' }, { status: 500 });
+  }
+}

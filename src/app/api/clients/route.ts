@@ -26,19 +26,37 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const businessId = body.businessId || DEMO_BUSINESS_ID.toString();
 
-    const newClient = await Client.create({
-      businessId,
-      firstName: body.firstName,
-      lastName: body.lastName,
-      email: body.email,
-      phone: body.phone,
-      company: body.company,
-      primaryNotificationChannel: body.primaryNotificationChannel || 'email'
-    });
+    if (!body.email) {
+      return NextResponse.json({ success: false, error: 'Email is required' }, { status: 400 });
+    }
 
-    return NextResponse.json({ success: true, client: newClient });
+    const emailKey = body.email.toLowerCase().trim();
+
+    // Find if client with same email exists for this business
+    let client = await Client.findOne({ businessId, email: emailKey });
+
+    if (client) {
+      // If existing client doesn't have a calendarId but the request has one, update it!
+      if (!client.calendarId && body.calendarId && mongoose.Types.ObjectId.isValid(body.calendarId)) {
+        client.calendarId = new mongoose.Types.ObjectId(body.calendarId);
+        await client.save();
+      }
+    } else {
+      client = await Client.create({
+        businessId,
+        calendarId: body.calendarId || undefined,
+        firstName: body.firstName,
+        lastName: body.lastName,
+        email: emailKey,
+        phone: body.phone,
+        company: body.company,
+        primaryNotificationChannel: body.primaryNotificationChannel || 'email'
+      });
+    }
+
+    return NextResponse.json({ success: true, client });
   } catch (error: any) {
-    console.error('Failed to create client:', error);
+    console.error('Failed to create/update client:', error);
     return NextResponse.json({ success: false, error: error.message || 'Database error' }, { status: 500 });
   }
 }

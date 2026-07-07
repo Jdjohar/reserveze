@@ -28,7 +28,7 @@ export default function LoginPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  const handleAuth = (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setMessage('');
@@ -39,13 +39,48 @@ export default function LoginPage() {
         return;
       }
       setLoading(true);
-      setTimeout(() => {
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'login',
+            email,
+            password
+          })
+        });
+        const data = await res.json();
         setLoading(false);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('merchant_email', email);
+        if (data.success) {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('merchant_email', data.user.email);
+            localStorage.setItem('merchant_name', data.user.name);
+            if (data.businessId) {
+              localStorage.setItem('merchant_business_id', data.businessId);
+            } else {
+              localStorage.removeItem('merchant_business_id');
+            }
+            if (data.assignedCalendarIds) {
+              localStorage.setItem('assigned_calendar_ids', JSON.stringify(data.assignedCalendarIds));
+            } else {
+              localStorage.removeItem('assigned_calendar_ids');
+            }
+          }
+          setMessage('Login successful! Redirecting...');
+          setTimeout(() => {
+            if (data.businessId) {
+              router.push('/merchant/dashboard');
+            } else {
+              router.push('/merchant/onboarding');
+            }
+          }, 800);
+        } else {
+          setError(data.error || 'Invalid credentials.');
         }
-        router.push('/merchant/dashboard');
-      }, 800);
+      } catch (err) {
+        setLoading(false);
+        setError('Connection error. Please try again.');
+      }
     } else {
       if (!name || !businessName || !email || !password || !confirmPassword) {
         setError('Please fill in all fields.');
@@ -56,17 +91,37 @@ export default function LoginPage() {
         return;
       }
       setLoading(true);
-      setTimeout(() => {
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'signup',
+            email,
+            password,
+            name,
+            businessName
+          })
+        });
+        const data = await res.json();
         setLoading(false);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('merchant_email', email);
-          localStorage.setItem('merchant_name', name);
+        if (data.success) {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('merchant_email', data.user.email);
+            localStorage.setItem('merchant_name', data.user.name);
+            localStorage.removeItem('merchant_business_id');
+          }
+          setMessage('Account registered successfully! Logging you in...');
+          setTimeout(() => {
+            router.push('/merchant/onboarding');
+          }, 1200);
+        } else {
+          setError(data.error || 'Failed to register account.');
         }
-        setMessage('Account registered successfully! Logging you in...');
-        setTimeout(() => {
-          router.push('/merchant/onboarding');
-        }, 1200);
-      }, 1000);
+      } catch (err) {
+        setLoading(false);
+        setError('Connection error. Please try again.');
+      }
     }
   };
 

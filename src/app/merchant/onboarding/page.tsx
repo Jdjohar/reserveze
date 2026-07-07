@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Building2, 
@@ -39,10 +39,55 @@ export default function MerchantOnboarding() {
   const [step, setStep] = useState(1);
   
   // STEP 1: Plan Selection
-  const [plan, setPlan] = useState<'basic' | 'advance'>('basic');
+  const [plan, setPlan] = useState<'basic' | 'advance'>('advance');
+
+  // STEP 5: Services & Team Members Lists
+  const [onboardingServices, setOnboardingServices] = useState<Array<{ name: string; price: number; duration: number }>>([
+    { name: 'Standard Haircut', price: 25, duration: 30 },
+    { name: 'Premium Trim', price: 40, duration: 45 }
+  ]);
+  const [showServiceModal, setShowServiceModal] = useState(false);
+  const [editingService, setEditingService] = useState({ name: '', price: 0, duration: 30, index: -1 });
+
+  const [onboardingTeam, setOnboardingTeam] = useState<Array<{ firstName: string; lastName: string; email: string; phone: string; role: 'STAFF' | 'SPECIALIST' | 'MANAGER'; password?: string }>>([]);
+  const [showTeamModal, setShowTeamModal] = useState(false);
+  const [editingTeam, setEditingTeam] = useState({ firstName: '', lastName: '', email: '', phone: '', role: 'STAFF' as any, password: '', index: -1 });
 
   // STEP 2: Category Selection
   const [category, setCategory] = useState('salon');
+  
+  const DEFAULT_SERVICES_BY_CATEGORY: Record<string, Array<{ name: string; price: number; duration: number }>> = {
+    salon: [
+      { name: 'Haircut & Styling', price: 25, duration: 30 },
+      { name: 'Premium Hair Spa', price: 45, duration: 45 },
+      { name: 'Relaxing Facial', price: 35, duration: 30 }
+    ],
+    dentist: [
+      { name: 'Dental Checkup', price: 50, duration: 30 },
+      { name: 'Teeth Whitening', price: 120, duration: 60 },
+      { name: 'Cavity Filling', price: 80, duration: 45 }
+    ],
+    autoshop: [
+      { name: 'Basic Oil Change', price: 40, duration: 30 },
+      { name: 'Full Car Detail Wash', price: 60, duration: 45 },
+      { name: 'Brake Pad Replacement', price: 150, duration: 60 }
+    ],
+    restaurant: [
+      { name: 'Standard Table Booking', price: 0, duration: 90 },
+      { name: 'VIP Booth Reservation', price: 20, duration: 120 }
+    ],
+    consulting: [
+      { name: 'Initial Business Consultation', price: 80, duration: 45 },
+      { name: 'Strategy Development Session', price: 150, duration: 60 }
+    ],
+    other: [
+      { name: 'General Appointment Slot', price: 15, duration: 30 }
+    ]
+  };
+
+  useEffect(() => {
+    setOnboardingServices(DEFAULT_SERVICES_BY_CATEGORY[category] || DEFAULT_SERVICES_BY_CATEGORY.other);
+  }, [category]);
   const categories = [
     { id: 'restaurant', name: 'Restaurant', desc: 'Table bookings & dining times' },
     { id: 'dentist', name: 'Dentist', desc: 'Healthcare, checkups & treatments' },
@@ -148,6 +193,26 @@ export default function MerchantOnboarding() {
     setCalendars(calendars.filter(c => c.id !== id));
   };
 
+  const handleSaveService = () => {
+    if (!editingService.name) return;
+    if (editingService.index >= 0) {
+      setOnboardingServices(onboardingServices.map((s, i) => i === editingService.index ? { name: editingService.name, price: Number(editingService.price) || 0, duration: Number(editingService.duration) || 30 } : s));
+    } else {
+      setOnboardingServices([...onboardingServices, { name: editingService.name, price: Number(editingService.price) || 0, duration: Number(editingService.duration) || 30 }]);
+    }
+    setShowServiceModal(false);
+  };
+
+  const handleSaveTeam = () => {
+    if (!editingTeam.firstName || !editingTeam.email) return;
+    if (editingTeam.index >= 0) {
+      setOnboardingTeam(onboardingTeam.map((t, i) => i === editingTeam.index ? { firstName: editingTeam.firstName, lastName: editingTeam.lastName, email: editingTeam.email, phone: editingTeam.phone, role: editingTeam.role, password: editingTeam.password } : t));
+    } else {
+      setOnboardingTeam([...onboardingTeam, { firstName: editingTeam.firstName, lastName: editingTeam.lastName, email: editingTeam.email, phone: editingTeam.phone, role: editingTeam.role, password: editingTeam.password }]);
+    }
+    setShowTeamModal(false);
+  };
+
   const handleToggleDay = (calId: string, day: string) => {
     setCalendars(calendars.map(c => {
       if (c.id === calId) {
@@ -199,7 +264,9 @@ export default function MerchantOnboarding() {
             address: address,
             slug: `${businessName.toLowerCase().replace(/[^a-z0-9]/g, '')}-loc-${idx + 1}`,
             availability: c.availability
-          }))
+          })),
+          services: onboardingServices,
+          team: onboardingTeam
         })
       });
       const data = await res.json();
@@ -238,78 +305,8 @@ export default function MerchantOnboarding() {
         {/* Steps container */}
         <div className="p-8 space-y-6">
 
-          {/* STEP 1: Plan Selection */}
+          {/* STEP 1: Category Selector */}
           {step === 1 && (
-            <div className="space-y-4">
-              <div className="text-center space-y-1">
-                <h3 className="font-extrabold text-lg">Select Your Subscription Plan</h3>
-                <p className="text-xs text-on-surface-variant">Stripe integration will be added here. Choose a tier to initialize your features.</p>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-6 pt-2">
-                {/* Basic Plan card */}
-                <div 
-                  onClick={() => setPlan('basic')}
-                  className={`cursor-pointer rounded-2xl p-5 border flex flex-col justify-between space-y-4 transition-all ${
-                    plan === 'basic' 
-                      ? 'border-primary bg-primary/5 shadow-md scale-[1.02]' 
-                      : 'border-outline-variant/30 bg-surface-container-lowest hover:border-primary/40'
-                  }`}
-                >
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <h4 className="font-extrabold text-sm text-on-surface">Basic Plan</h4>
-                      <span className="font-black text-lg text-primary">$10</span>
-                    </div>
-                    <ul className="text-[11px] space-y-2 text-on-surface-variant font-medium">
-                      <li>• Single Calendar / Location</li>
-                      <li>• Fixed 30-Minute slots</li>
-                      <li>• Unlimited appointments</li>
-                      <li>• Sharable Calendar Link</li>
-                      <li>• Automated notifications</li>
-                    </ul>
-                  </div>
-                  <div className={`w-full text-center py-2 rounded-xl text-xs font-bold ${
-                    plan === 'basic' ? 'bg-primary text-on-primary' : 'bg-surface-container-high text-on-surface-variant'
-                  }`}>
-                    {plan === 'basic' ? 'Selected Plan' : 'Select'}
-                  </div>
-                </div>
-
-                {/* Advance Plan card */}
-                <div 
-                  onClick={() => setPlan('advance')}
-                  className={`cursor-pointer rounded-2xl p-5 border flex flex-col justify-between space-y-4 transition-all ${
-                    plan === 'advance' 
-                      ? 'border-[#5a82dc] bg-[#5a82dc]/5 shadow-md scale-[1.02]' 
-                      : 'border-outline-variant/30 bg-surface-container-lowest hover:border-[#5a82dc]/40'
-                  }`}
-                >
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <h4 className="font-extrabold text-sm text-on-surface">Advance Plan</h4>
-                      <span className="font-black text-lg text-[#5a82dc]">$15</span>
-                    </div>
-                    <ul className="text-[11px] space-y-2 text-on-surface-variant font-medium">
-                      <li>• Up to 10 Calendars / Locations</li>
-                      <li>• Custom slot times by Employees & Services</li>
-                      <li>• Unlimited appointments</li>
-                      <li>• Sharable Calendar Link</li>
-                      <li>• Automated notifications & cascades</li>
-                    </ul>
-                  </div>
-                  <div className={`w-full text-center py-2 rounded-xl text-xs font-bold ${
-                    plan === 'advance' ? 'bg-[#5a82dc] text-white' : 'bg-surface-container-high text-on-surface-variant'
-                  }`}>
-                    {plan === 'advance' ? 'Selected Plan' : 'Select'}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 2: Category Selector */}
-          {step === 2 && (
             <div className="space-y-4">
               <div className="space-y-1">
                 <h3 className="font-extrabold text-sm text-on-surface">Select Business Category</h3>
@@ -341,8 +338,8 @@ export default function MerchantOnboarding() {
             </div>
           )}
 
-          {/* STEP 3: Business Profile Update */}
-          {step === 3 && (
+          {/* STEP 2: Business Profile Update */}
+          {step === 2 && (
             <div className="space-y-4">
               <div className="space-y-1">
                 <h3 className="font-extrabold text-sm text-on-surface">Establish Business Profile</h3>
@@ -499,8 +496,8 @@ export default function MerchantOnboarding() {
             </div>
           )}
 
-          {/* STEP 4: Create Calendar */}
-          {step === 4 && (
+          {/* STEP 3: Configure Calendars */}
+          {step === 3 && (
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <div className="space-y-1">
@@ -565,8 +562,8 @@ export default function MerchantOnboarding() {
             </div>
           )}
 
-          {/* STEP 5: Availability Rules */}
-          {step === 5 && (
+          {/* STEP 4: Availability Rules */}
+          {step === 4 && (
             <div className="space-y-4">
               <div className="space-y-1">
                 <h3 className="font-extrabold text-sm text-on-surface">Manage Operating Availability</h3>
@@ -632,6 +629,127 @@ export default function MerchantOnboarding() {
             </div>
           )}
 
+          {/* STEP 5: Services & Team Members Configuration */}
+          {step === 5 && (
+            <div className="space-y-6 text-xs">
+              <div className="space-y-1">
+                <h3 className="font-extrabold text-sm text-on-surface">Services & Team Members Setup</h3>
+                <p className="text-xs text-on-surface-variant">Define the services you offer and add your staff members to manage scheduling availability.</p>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                
+                {/* Services Column */}
+                <div className="space-y-3 bg-surface-container-low/35 border border-outline-variant/20 rounded-xl p-4 flex flex-col justify-between min-h-[300px]">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center pb-2 border-b border-outline-variant/10">
+                      <h4 className="font-bold text-xs text-primary uppercase">Services Offered</h4>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingService({ name: '', price: 0, duration: 30, index: -1 });
+                          setShowServiceModal(true);
+                        }}
+                        className="text-[10px] bg-primary text-on-primary px-2.5 py-1 rounded font-bold hover:bg-primary-container transition-colors flex items-center gap-0.5"
+                      >
+                        <Plus className="w-3 h-3" /> Add Service
+                      </button>
+                    </div>
+                    <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                      {onboardingServices.length === 0 ? (
+                        <span className="text-[10px] text-on-surface-variant block py-4 text-center">No services added yet.</span>
+                      ) : (
+                        onboardingServices.map((svc, idx) => (
+                          <div key={idx} className="flex justify-between items-center bg-surface-container-low border border-outline-variant/10 rounded-lg p-2.5">
+                            <div>
+                              <h5 className="font-bold text-xs text-on-surface">{svc.name}</h5>
+                              <span className="text-[10px] text-on-surface-variant font-semibold">${svc.price} • {svc.duration} mins</span>
+                            </div>
+                            <div className="flex gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingService({ ...svc, index: idx });
+                                  setShowServiceModal(true);
+                                }}
+                                className="p-1 hover:bg-surface-container rounded text-on-surface-variant"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setOnboardingServices(onboardingServices.filter((_, i) => i !== idx))}
+                                className="p-1 hover:bg-red-50 text-red-500 rounded"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Team Column */}
+                <div className="space-y-3 bg-surface-container-low/35 border border-outline-variant/20 rounded-xl p-4 flex flex-col justify-between min-h-[300px]">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center pb-2 border-b border-outline-variant/10">
+                      <h4 className="font-bold text-xs text-primary uppercase">Staff & Specialists</h4>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingTeam({ firstName: '', lastName: '', email: '', phone: '', role: 'STAFF', password: '', index: -1 });
+                          setShowTeamModal(true);
+                        }}
+                        className="text-[10px] bg-primary text-on-primary px-2.5 py-1 rounded font-bold hover:bg-primary-container transition-colors flex items-center gap-0.5"
+                      >
+                        <Plus className="w-3 h-3" /> Add Member
+                      </button>
+                    </div>
+                    <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                      {onboardingTeam.length === 0 ? (
+                        <span className="text-[10px] text-on-surface-variant block py-4 text-center">No team members added yet.</span>
+                      ) : (
+                        onboardingTeam.map((member, idx) => (
+                          <div key={idx} className="flex justify-between items-center bg-surface-container-low border border-outline-variant/10 rounded-lg p-2.5">
+                            <div>
+                              <h5 className="font-bold text-xs text-on-surface">{member.firstName} {member.lastName}</h5>
+                              <span className="text-[9px] text-on-surface-variant font-semibold flex items-center gap-1">
+                                <span className="bg-primary/10 text-primary px-1 py-0.2 rounded font-extrabold uppercase text-[8px]">{member.role}</span>
+                                {member.email}
+                              </span>
+                            </div>
+                            <div className="flex gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingTeam({ ...member, password: member.password || '', index: idx });
+                                  setShowTeamModal(true);
+                                }}
+                                className="p-1 hover:bg-surface-container rounded text-on-surface-variant"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setOnboardingTeam(onboardingTeam.filter((_, i) => i !== idx))}
+                                className="p-1 hover:bg-red-50 text-red-500 rounded"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* Bottom Actions footer */}
@@ -648,8 +766,9 @@ export default function MerchantOnboarding() {
           
           {step < 5 ? (
             <button
+              type="button"
               onClick={() => {
-                if (step === 3) {
+                if (step === 2) {
                   if (!businessName || !email || !phone || !address) {
                     alert('Please fill in all required fields marked with *');
                     return;
@@ -674,8 +793,23 @@ export default function MerchantOnboarding() {
                     });
                   }
                   setCalendars(list);
+
+                  // Auto-populate first team member using merchant details
+                  if (onboardingTeam.length === 0) {
+                    const nameParts = (typeof window !== 'undefined' ? localStorage.getItem('merchant_name') : '') || 'Business Owner';
+                    const splitNames = nameParts.split(' ');
+                    const firstName = splitNames[0] || 'Admin';
+                    const lastName = splitNames.slice(1).join(' ') || 'Manager';
+                    setOnboardingTeam([{
+                      firstName,
+                      lastName,
+                      email: email,
+                      phone: phone,
+                      role: 'MANAGER'
+                    }]);
+                  }
                 }
-                if (step === 4 && calendars.length === 0) {
+                if (step === 3 && calendars.length === 0) {
                   alert('Please configure at least one calendar location.');
                   return;
                 }
@@ -771,6 +905,181 @@ export default function MerchantOnboarding() {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Service Creator Modal */}
+      {showServiceModal && (
+        <div className="fixed inset-0 z-50 bg-inverse-surface/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-6 shadow-xl space-y-4">
+            <div className="flex justify-between items-center border-b border-outline-variant/20 pb-3">
+              <h3 className="font-bold text-sm text-on-surface">{editingService.index >= 0 ? 'Edit Service' : 'Add New Service'}</h3>
+              <button type="button" onClick={() => setShowServiceModal(false)} className="text-on-surface-variant hover:text-on-surface font-bold text-xs">Close</button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-on-surface-variant uppercase">Service Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editingService.name}
+                  onChange={(e) => setEditingService({ ...editingService, name: e.target.value })}
+                  placeholder="e.g. Haircut & Blowdry"
+                  className="w-full text-xs bg-surface-container rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">Price ($) *</label>
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    value={editingService.price}
+                    onChange={(e) => setEditingService({ ...editingService, price: parseFloat(e.target.value) || 0 })}
+                    className="w-full text-xs bg-surface-container rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">Duration (Minutes) *</label>
+                  <select
+                    value={editingService.duration}
+                    onChange={(e) => setEditingService({ ...editingService, duration: parseInt(e.target.value) || 30 })}
+                    className="w-full bg-surface-container border border-outline-variant/30 rounded-lg p-2.5 focus:outline-none text-xs"
+                  >
+                    <option value={15}>15 Minutes</option>
+                    <option value={30}>30 Minutes</option>
+                    <option value={45}>45 Minutes</option>
+                    <option value={60}>1 Hour</option>
+                    <option value={90}>1.5 Hours</option>
+                    <option value={120}>2 Hours</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-3 border-t border-outline-variant/20">
+              <button
+                type="button"
+                onClick={() => setShowServiceModal(false)}
+                className="flex-1 py-2.5 border border-outline-variant/40 hover:bg-surface-container-low rounded-lg text-xs font-semibold text-on-surface-variant transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveService}
+                className="flex-1 py-2.5 bg-primary hover:bg-primary-container text-on-primary rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+              >
+                <Check className="w-4 h-4" /> Save Service
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Team Creator Modal */}
+      {showTeamModal && (
+        <div className="fixed inset-0 z-50 bg-inverse-surface/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-6 shadow-xl space-y-4">
+            <div className="flex justify-between items-center border-b border-outline-variant/20 pb-3">
+              <h3 className="font-bold text-sm text-on-surface">{editingTeam.index >= 0 ? 'Edit Team Member' : 'Add New Team Member'}</h3>
+              <button type="button" onClick={() => setShowTeamModal(false)} className="text-on-surface-variant hover:text-on-surface font-bold text-xs">Close</button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">First Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingTeam.firstName}
+                    onChange={(e) => setEditingTeam({ ...editingTeam, firstName: e.target.value })}
+                    placeholder="John"
+                    className="w-full text-xs bg-surface-container rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">Last Name</label>
+                  <input
+                    type="text"
+                    value={editingTeam.lastName}
+                    onChange={(e) => setEditingTeam({ ...editingTeam, lastName: e.target.value })}
+                    placeholder="Doe"
+                    className="w-full text-xs bg-surface-container rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-on-surface-variant uppercase">Email Address *</label>
+                <input
+                  type="email"
+                  required
+                  value={editingTeam.email}
+                  onChange={(e) => setEditingTeam({ ...editingTeam, email: e.target.value })}
+                  placeholder="john.doe@company.com"
+                  className="w-full text-xs bg-surface-container rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">Phone Number</label>
+                  <input
+                    type="tel"
+                    value={editingTeam.phone}
+                    onChange={(e) => setEditingTeam({ ...editingTeam, phone: e.target.value })}
+                    placeholder="+1 (555) 0192"
+                    className="w-full text-xs bg-surface-container rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">Role *</label>
+                  <select
+                    value={editingTeam.role}
+                    onChange={(e) => setEditingTeam({ ...editingTeam, role: e.target.value as any })}
+                    className="w-full bg-surface-container border border-outline-variant/30 rounded-lg p-2.5 focus:outline-none text-xs"
+                  >
+                    <option value="STAFF">Staff Member</option>
+                    <option value="SPECIALIST">Specialist</option>
+                    <option value="MANAGER">Manager</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-on-surface-variant uppercase">Login Password (Optional - will auto-generate if empty)</label>
+                <input
+                  type="password"
+                  value={editingTeam.password || ''}
+                  onChange={(e) => setEditingTeam({ ...editingTeam, password: e.target.value })}
+                  placeholder="e.g. MyPassword123"
+                  className="w-full text-xs bg-surface-container rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-3 border-t border-outline-variant/20">
+              <button
+                type="button"
+                onClick={() => setShowTeamModal(false)}
+                className="flex-1 py-2.5 border border-outline-variant/40 hover:bg-surface-container-low rounded-lg text-xs font-semibold text-on-surface-variant transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveTeam}
+                className="flex-1 py-2.5 bg-primary hover:bg-primary-container text-on-primary rounded-lg text-xs font-semibold flex items-center justify-center gap-1 transition-colors"
+              >
+                <Check className="w-4 h-4" /> Save Member
+              </button>
+            </div>
           </div>
         </div>
       )}

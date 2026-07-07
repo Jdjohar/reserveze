@@ -15,12 +15,16 @@ import {
   Clock, 
   ArrowRight,
   Sparkles,
-  Users
+  Users,
+  Check,
+  X,
+  ShieldCheck
 } from 'lucide-react';
 import Link from 'next/link';
 
 interface AppointmentObj {
   _id: string;
+  calendarId: string;
   startTime: string;
   endTime: string;
   status: string;
@@ -35,6 +39,31 @@ export default function MerchantDashboard() {
   const [appointments, setAppointments] = useState<AppointmentObj[]>([]);
   const [loading, setLoading] = useState(true);
   const [merchantName, setMerchantName] = useState('Alex');
+
+  const handleUpdateStatus = async (apptId: string, newStatus: string) => {
+    try {
+      const res = await fetch(`/api/appointments/${apptId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAppointments(appointments.map(a => a._id === apptId ? { ...a, status: newStatus } : a));
+      } else {
+        alert(data.error || 'Failed to update status.');
+      }
+    } catch (err) {
+      console.error('Update status error:', err);
+      alert('Network error.');
+    }
+  };
+
+  // Scoped location filtering states
+  const [isRestrictedManager, setIsRestrictedManager] = useState(false);
+  const [assignedCalendarIds, setAssignedCalendarIds] = useState<string[]>([]);
+  const [dbCalendars, setDbCalendars] = useState<any[]>([]);
+  const [selectedCalId, setSelectedCalId] = useState('');
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -61,7 +90,41 @@ export default function MerchantDashboard() {
           }
         }
 
-        const url = storedBizId ? `/api/appointments?businessId=${storedBizId}` : '/api/appointments';
+        if (!storedBizId) return;
+
+        // Fetch calendars (locations)
+        const calRes = await fetch(`/api/calendars?businessId=${storedBizId}`);
+        const calData = await calRes.json();
+        let listCals = [];
+        if (calData.success) {
+          listCals = calData.calendars || [];
+          setDbCalendars(listCals);
+        }
+
+        // Check restricted manager status
+        let isRestricted = false;
+        let assignedIds: string[] = [];
+        const rawAssigned = localStorage.getItem('assigned_calendar_ids');
+        if (rawAssigned) {
+          try {
+            const parsed = JSON.parse(rawAssigned);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              isRestricted = true;
+              assignedIds = parsed;
+              setIsRestrictedManager(true);
+              setAssignedCalendarIds(parsed);
+            }
+          } catch {}
+        }
+
+        // Set default location selection
+        if (isRestricted) {
+          setSelectedCalId(assignedIds[0]);
+        } else {
+          setSelectedCalId('primary');
+        }
+
+        const url = `/api/appointments?businessId=${storedBizId}`;
         const res = await fetch(url);
         const data = await res.json();
         if (data.success) {
@@ -76,14 +139,37 @@ export default function MerchantDashboard() {
     initAndFetch();
   }, []);
 
+  // Find the primary calendar ID
+  const primaryCalId = dbCalendars.reduce((oldest, current) => {
+    if (!oldest) return current._id;
+    return current._id < oldest ? current._id : oldest;
+  }, '');
+
+  // Filter the appointments according to scope
+  const filteredAppointments = appointments.filter(appt => {
+    // If restricted manager, only show their assigned locations
+    if (isRestrictedManager) {
+      return assignedCalendarIds.includes(appt.calendarId);
+    }
+
+    // Owner filters:
+    if (selectedCalId === 'primary') {
+      return appt.calendarId === primaryCalId;
+    }
+    if (selectedCalId && selectedCalId !== 'all') {
+      return appt.calendarId === selectedCalId;
+    }
+    return true; // 'all'
+  });
+
   // Calculate dynamic stats
   const today = new Date().toDateString();
-  const todayBookings = appointments.filter(a => new Date(a.startTime).toDateString() === today);
-  const cancelledBookings = appointments.filter(a => a.status === 'CANCELLED');
-  const completedBookings = appointments.filter(a => a.status === 'COMPLETED');
+  const todayBookings = filteredAppointments.filter(a => new Date(a.startTime).toDateString() === today);
+  const cancelledBookings = filteredAppointments.filter(a => a.status === 'CANCELLED');
+  const completedBookings = filteredAppointments.filter(a => a.status === 'COMPLETED');
   
   // Simulated revenue mapping based on sample service price fallback
-  const totalRevenue = appointments
+  const totalRevenue = filteredAppointments
     .filter(a => a.status !== 'CANCELLED')
     .reduce((sum, a) => sum + (a.price || 45), 0);
 
@@ -108,6 +194,41 @@ export default function MerchantDashboard() {
 
         <main className="flex-1 p-8 space-y-8 overflow-y-auto">
           
+          {/* Scope selector bar */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-4 shadow-sm">
+            <div className="space-y-1">
+              <h4 className="font-bold text-xs text-on-surface uppercase tracking-wider">Active Location Overview</h4>
+              <p className="text-[11px] text-on-surface-variant leading-relaxed">
+                Viewing analytics and schedule details for the selected branch calendar.
+              </p>
+            </div>
+            <div className="w-full sm:w-60">
+              {isRestrictedManager ? (
+                <select
+                  value={selectedCalId}
+                  disabled
+                  className="w-full bg-surface-container text-xs rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none font-bold text-on-surface-variant opacity-75 cursor-not-allowed"
+                >
+                  {dbCalendars.filter(cal => assignedCalendarIds.includes(cal._id)).map(cal => (
+                    <option key={cal._id} value={cal._id}>📍 {cal.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <select
+                  value={selectedCalId}
+                  onChange={(e) => setSelectedCalId(e.target.value)}
+                  className="w-full bg-surface-container-lowest text-xs rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none font-bold text-on-surface"
+                >
+                  <option value="primary">🏢 Primary Location</option>
+                  {dbCalendars.map(cal => (
+                    <option key={cal._id} value={cal._id}>📍 {cal.name}</option>
+                  ))}
+                  <option value="all">🌍 All Locations (Central View)</option>
+                </select>
+              )}
+            </div>
+          </div>
+
           {/* Dashboard Headline Alerts */}
           <div className="bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/20 rounded-xl p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -165,14 +286,14 @@ export default function MerchantDashboard() {
                 <div className="text-center py-10 text-xs text-on-surface-variant font-bold">
                   Loading appointments from MongoDB...
                 </div>
-              ) : appointments.length === 0 ? (
+              ) : filteredAppointments.length === 0 ? (
                 <div className="text-center py-12 space-y-3">
                   <div className="bg-primary/10 text-primary w-10 h-10 rounded-full flex items-center justify-center mx-auto">
                     <CalendarDays className="w-5 h-5" />
                   </div>
                   <h4 className="font-extrabold text-xs text-on-surface">No Appointments Registered</h4>
                   <p className="text-[11px] text-on-surface-variant max-w-xs mx-auto">
-                    There are no bookings in the database. Share your booking link to let customers schedule dates.
+                    There are no bookings in the database for the selected scope. Share your booking link to let customers schedule dates.
                   </p>
                 </div>
               ) : (
@@ -185,33 +306,79 @@ export default function MerchantDashboard() {
                         <th className="py-3 px-2">Time</th>
                         <th className="py-3 px-2">Channel</th>
                         <th className="py-3 px-2">Status</th>
+                        <th className="py-3 px-2 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {appointments.map((appt) => (
-                        <tr key={appt._id} className="border-b border-outline-variant/20 hover:bg-surface-container-low/30 transition-colors">
-                          <td className="py-3.5 px-2 font-bold text-on-surface">{appt.clientName || 'Mock Client'}</td>
-                          <td className="py-3.5 px-2 text-on-surface-variant">{appt.serviceName || 'Mock Service'}</td>
-                          <td className="py-3.5 px-2 font-medium text-on-surface">
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3.5 h-3.5 text-outline" />
-                              {new Date(appt.startTime).toLocaleString()}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-2">
-                            <span className="px-2 py-0.5 rounded-full font-bold text-[10px] bg-primary/10 text-primary uppercase">
-                              {appt.primaryChannel}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-2">
-                            <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                              appt.status === 'CONFIRMED' ? 'bg-secondary/10 text-secondary' : 'bg-yellow-500/10 text-yellow-600'
-                            }`}>
-                              {appt.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {filteredAppointments.map((appt) => {
+                        const statusStyle = 
+                          appt.status === 'CONFIRMED' ? 'bg-green-500/10 text-green-700' :
+                          appt.status === 'PENDING' ? 'bg-yellow-500/10 text-yellow-600' :
+                          appt.status === 'COMPLETED' ? 'bg-blue-500/10 text-blue-700' :
+                          'bg-red-500/10 text-red-700';
+                        return (
+                          <tr key={appt._id} className="border-b border-outline-variant/20 hover:bg-surface-container-low/30 transition-colors">
+                            <td className="py-3.5 px-2 font-bold text-on-surface">{appt.clientName || 'Mock Client'}</td>
+                            <td className="py-3.5 px-2 text-on-surface-variant">{appt.serviceName || 'Mock Service'}</td>
+                            <td className="py-3.5 px-2 font-medium text-on-surface">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3.5 h-3.5 text-outline" />
+                                {new Date(appt.startTime).toLocaleString()}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-2">
+                              <span className="px-2 py-0.5 rounded-full font-bold text-[10px] bg-primary/10 text-primary uppercase">
+                                {appt.primaryChannel}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-2">
+                              <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${statusStyle}`}>
+                                {appt.status}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-2 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {appt.status === 'PENDING' && (
+                                  <>
+                                    <button
+                                      onClick={() => handleUpdateStatus(appt._id, 'CONFIRMED')}
+                                      title="Approve"
+                                      className="p-1 bg-green-500/10 hover:bg-green-500/20 text-green-700 rounded transition-colors"
+                                    >
+                                      <Check className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleUpdateStatus(appt._id, 'CANCELLED')}
+                                      title="Cancel"
+                                      className="p-1 bg-red-500/10 hover:bg-red-500/20 text-red-600 rounded transition-colors"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
+                                )}
+                                {appt.status === 'CONFIRMED' && (
+                                  <>
+                                    <button
+                                      onClick={() => handleUpdateStatus(appt._id, 'COMPLETED')}
+                                      title="Complete"
+                                      className="p-1 bg-primary/10 hover:bg-primary/20 text-primary rounded transition-colors"
+                                    >
+                                      <ShieldCheck className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleUpdateStatus(appt._id, 'CANCELLED')}
+                                      title="Cancel"
+                                      className="p-1 bg-red-500/10 hover:bg-red-500/20 text-red-600 rounded transition-colors"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

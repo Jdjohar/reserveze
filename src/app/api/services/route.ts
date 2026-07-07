@@ -12,10 +12,34 @@ export async function GET(req: NextRequest) {
     
     const { searchParams } = new URL(req.url);
     const businessId = searchParams.get('businessId') || DEMO_BUSINESS_ID.toString();
+    const calendarId = searchParams.get('calendarId');
 
-    const list = await Service.find({ businessId }).sort({ createdAt: -1 });
+    let list = [];
+    let isCustom = true;
 
-    return NextResponse.json({ success: true, services: list });
+    if (calendarId) {
+      list = await Service.find({ businessId, calendarId }).sort({ createdAt: -1 });
+      if (list.length === 0) {
+        list = await Service.find({
+          businessId,
+          $or: [
+            { calendarId: { $exists: false } },
+            { calendarId: null }
+          ]
+        }).sort({ createdAt: -1 });
+        isCustom = false;
+      }
+    } else {
+      list = await Service.find({
+        businessId,
+        $or: [
+          { calendarId: { $exists: false } },
+          { calendarId: null }
+        ]
+      }).sort({ createdAt: -1 });
+    }
+
+    return NextResponse.json({ success: true, services: list, isCustom });
   } catch (error: any) {
     console.error('Failed to get services:', error);
     return NextResponse.json({ success: false, error: error.message || 'Database error' }, { status: 500 });
@@ -36,6 +60,7 @@ export async function POST(req: NextRequest) {
 
     const newService = await Service.create({
       businessId,
+      calendarId: body.calendarId || undefined,
       name: body.name,
       duration: totalDuration,
       durationHours: hours,
@@ -52,6 +77,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, service: newService });
   } catch (error: any) {
     console.error('Failed to create service:', error);
+    return NextResponse.json({ success: false, error: error.message || 'Database error' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    await connectToDatabase();
+    const { searchParams } = new URL(req.url);
+    const businessId = searchParams.get('businessId');
+    const calendarId = searchParams.get('calendarId');
+
+    if (!businessId || !calendarId) {
+      return NextResponse.json({ success: false, error: 'businessId and calendarId are required' }, { status: 400 });
+    }
+
+    const deleteResult = await Service.deleteMany({ businessId, calendarId });
+    return NextResponse.json({ success: true, message: `Successfully deleted ${deleteResult.deletedCount} services.`, deletedCount: deleteResult.deletedCount });
+  } catch (error: any) {
+    console.error('Failed to reset services:', error);
     return NextResponse.json({ success: false, error: error.message || 'Database error' }, { status: 500 });
   }
 }

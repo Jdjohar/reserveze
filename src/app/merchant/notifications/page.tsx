@@ -106,50 +106,32 @@ export default function MerchantNotifications() {
                   </label>
 
                   {/* WhatsApp Channel */}
-                  <label className={`border rounded-xl p-4 flex flex-col justify-between cursor-pointer hover:border-primary/50 transition-colors ${
-                    primaryChannel === 'whatsapp' ? 'border-primary bg-primary/5' : 'border-outline-variant/30'
-                  }`}>
+                  <div className="border border-outline-variant/30 rounded-xl p-4 flex flex-col justify-between opacity-50 cursor-not-allowed bg-surface-container-low/40">
                     <div className="flex justify-between items-start">
                       <div className="bg-secondary/15 text-secondary p-2 rounded-lg">
                         <MessageSquare className="w-4.5 h-4.5" />
                       </div>
-                      <input 
-                        type="radio" 
-                        name="primaryChannel" 
-                        value="whatsapp"
-                        checked={primaryChannel === 'whatsapp'} 
-                        onChange={() => setPrimaryChannel('whatsapp')}
-                        className="text-primary focus:ring-primary w-4 h-4 mt-1" 
-                      />
+                      <span className="text-[8px] bg-outline-variant/40 text-on-surface-variant px-1.5 py-0.5 rounded font-extrabold uppercase scale-90 whitespace-nowrap">Coming Soon</span>
                     </div>
                     <div className="mt-4">
-                      <h4 className="font-extrabold text-xs">WhatsApp Alert</h4>
+                      <h4 className="font-extrabold text-xs text-on-surface-variant">WhatsApp Alert</h4>
                       <span className="text-[9px] text-primary font-bold bg-primary/15 px-2 py-0.5 rounded-full mt-1.5 inline-block">Low Cost Utility</span>
                     </div>
-                  </label>
+                  </div>
 
                   {/* SMS Channel */}
-                  <label className={`border rounded-xl p-4 flex flex-col justify-between cursor-pointer hover:border-primary/50 transition-colors ${
-                    primaryChannel === 'sms' ? 'border-primary bg-primary/5' : 'border-outline-variant/30'
-                  }`}>
+                  <div className="border border-outline-variant/30 rounded-xl p-4 flex flex-col justify-between opacity-50 cursor-not-allowed bg-surface-container-low/40">
                     <div className="flex justify-between items-start">
                       <div className="bg-tertiary/10 text-tertiary p-2 rounded-lg">
                         <Smartphone className="w-4.5 h-4.5" />
                       </div>
-                      <input 
-                        type="radio" 
-                        name="primaryChannel" 
-                        value="sms"
-                        checked={primaryChannel === 'sms'} 
-                        onChange={() => setPrimaryChannel('sms')}
-                        className="text-primary focus:ring-primary w-4 h-4 mt-1" 
-                      />
+                      <span className="text-[8px] bg-outline-variant/40 text-on-surface-variant px-1.5 py-0.5 rounded font-extrabold uppercase scale-90 whitespace-nowrap">Coming Soon</span>
                     </div>
                     <div className="mt-4">
-                      <h4 className="font-extrabold text-xs">Carrier SMS</h4>
+                      <h4 className="font-extrabold text-xs text-on-surface-variant">Carrier SMS</h4>
                       <span className="text-[9px] text-error font-bold bg-error-container/20 px-2 py-0.5 rounded-full mt-1.5 inline-block">High Cost</span>
                     </div>
-                  </label>
+                  </div>
 
                 </div>
               </div>

@@ -66,6 +66,7 @@ export default function CustomerBookingPage({ params }: { params: Promise<{ busi
   const [errorMessage, setErrorMessage] = useState('');
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<any | null>(null);
+  const [createdApptId, setCreatedApptId] = useState('');
 
   // Dynamic Date Generator: Next 5 days starting from today
   const [dates, setDates] = useState<Array<{ day: string; date: string; value: string }>>([]);
@@ -107,6 +108,7 @@ export default function CustomerBookingPage({ params }: { params: Promise<{ busi
       try {
         // 1. Fetch details by checking if ID/Slug is a Calendar Location first
         let activeBizId = businessId;
+        let resolvedCalId = '';
         const calCheckRes = await fetch(`/api/calendars/${businessId}`);
         const calCheckData = await calCheckRes.json();
 
@@ -114,6 +116,7 @@ export default function CustomerBookingPage({ params }: { params: Promise<{ busi
           // It's a specific calendar location!
           const cal = calCheckData.calendar;
           setCalendarId(cal._id);
+          resolvedCalId = cal._id;
           activeBizId = cal.businessId;
           setRealBusinessId(cal.businessId);
 
@@ -171,11 +174,22 @@ export default function CustomerBookingPage({ params }: { params: Promise<{ busi
           setEmployees(teamData.employees);
         }
 
-        // 4. Fetch services list
-        const res = await fetch(`/api/services?businessId=${activeBizId}`);
-        const data = await res.json();
+        // 5. Fetch services list (check location scope)
+        let servicesUrl = `/api/services?businessId=${activeBizId}`;
+        if (resolvedCalId) {
+          servicesUrl += `&calendarId=${resolvedCalId}`;
+        }
+        let res = await fetch(servicesUrl);
+        let data = await res.json();
+        if (data.success && data.services.length === 0 && resolvedCalId) {
+          // Fall back to central business services
+          const fallbackRes = await fetch(`/api/services?businessId=${activeBizId}`);
+          data = await fallbackRes.json();
+        }
+
         if (data.success) {
-          const mapped = data.services.map((s: any) => ({
+          const activeServices = data.services.filter((s: any) => s.isActive !== false);
+          const mapped = activeServices.map((s: any) => ({
             ...s,
             id: s._id
           }));
@@ -291,6 +305,7 @@ export default function CustomerBookingPage({ params }: { params: Promise<{ busi
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           businessId: realBusinessId || businessId,
+          calendarId: calendarId || undefined,
           firstName,
           lastName,
           email,
@@ -332,6 +347,9 @@ export default function CustomerBookingPage({ params }: { params: Promise<{ busi
       
       const apptData = await apptRes.json();
       if (apptData.success) {
+        if (apptData.appointment && apptData.appointment._id) {
+          setCreatedApptId(apptData.appointment._id);
+        }
         setStep(4);
       } else {
         setErrorMessage(apptData.error || 'Failed to complete booking.');
@@ -780,8 +798,8 @@ export default function CustomerBookingPage({ params }: { params: Promise<{ busi
                   To save communications fees, we send exactly one initial message. Track future status modifications, employee assignments, and notes live on the portal:
                 </p>
                 <Link 
-                  href="/booking/track/mock-appt-id"
-                  className="w-full bg-primary hover:bg-primary-container text-on-primary py-2 rounded-lg text-xs font-bold block transition-colors shadow-sm"
+                  href={`/booking/track/${createdApptId || 'mock-appt-id'}`}
+                  className="w-full bg-primary hover:bg-primary-container text-on-primary py-2 rounded-lg text-xs font-bold block transition-colors shadow-sm text-center"
                 >
                   Open Live Status Tracking Page
                 </Link>

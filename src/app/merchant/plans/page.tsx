@@ -42,6 +42,75 @@ export default function MerchantPlansPage() {
     fetchBusiness();
   }, []);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined' && business) {
+      const params = new URLSearchParams(window.location.search);
+      const isSuccess = params.get('success') === 'true';
+      const isCancelled = params.get('cancelled') === 'true';
+      const isMock = params.get('mock') === 'true';
+      const credits = params.get('credits');
+      const price = params.get('price');
+
+      if (isSuccess) {
+        if (isMock && credits) {
+          const creditsNum = parseInt(credits, 10);
+          const priceNum = parseFloat(price || '0');
+          
+          const runMockTopUp = async () => {
+            try {
+              const res = await fetch('/api/business', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  businessId: business._id,
+                  buyCredits: creditsNum
+                })
+              });
+              const data = await res.json();
+              if (data.success) {
+                setBusiness(data.business);
+                setSuccess(`Successfully verified checkout session! Purchased ${creditsNum} Booking Credits for $${priceNum}!`);
+                window.dispatchEvent(new Event('storage'));
+              }
+            } catch (err) {}
+          };
+          runMockTopUp();
+        } else {
+          const sessionId = params.get('session_id');
+          if (sessionId) {
+            const runRealVerify = async () => {
+              try {
+                const res = await fetch('/api/billing/verify-session', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ sessionId })
+                });
+                const data = await res.json();
+                if (data.success) {
+                  setSuccess('Payment verified successfully! Your booking credits have been updated.');
+                  fetchBusiness();
+                  window.dispatchEvent(new Event('storage'));
+                } else {
+                  setError(data.error || 'Failed to verify checkout session.');
+                }
+              } catch (err) {
+                console.error('Session verification error:', err);
+              }
+            };
+            runRealVerify();
+          } else {
+            setSuccess(`Successfully verified checkout session! Refreshed balance details.`);
+            fetchBusiness();
+          }
+        }
+        window.history.replaceState({}, '', '/merchant/plans');
+      } else if (isCancelled) {
+        setError('Payment checkout cancelled by user.');
+        window.history.replaceState({}, '', '/merchant/plans');
+      }
+    }
+  }, [business]);
+
   const handlePurchasePack = async (credits: number, price: number) => {
     if (!business) return;
     setSaving(true);
@@ -49,25 +118,20 @@ export default function MerchantPlansPage() {
     setSuccess('');
 
     try {
-      const res = await fetch('/api/business', {
-        method: 'PUT',
+      const res = await fetch('/api/billing/checkout', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           businessId: business._id,
-          buyCredits: credits
+          credits,
+          price
         })
       });
       const data = await res.json();
-      if (data.success) {
-        setBusiness(data.business);
-        setSuccess(`Successfully purchased ${credits} Booking Credits for $${price}!`);
-        
-        // Trigger storage event so sidebar dynamically reloads
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new Event('storage'));
-        }
+      if (data.success && data.url) {
+        window.location.href = data.url;
       } else {
-        setError(data.error || 'Failed to complete credit purchase.');
+        setError(data.error || 'Failed to initiate checkout session.');
       }
     } catch (err) {
       console.error('Failed to purchase credits:', err);
@@ -105,6 +169,7 @@ export default function MerchantPlansPage() {
             </div>
           ) : (
             <div className="space-y-8">
+
               {/* Credits Balance Indicator */}
               <div className="bg-primary/5 border border-primary/20 rounded-2xl p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div className="space-y-1">

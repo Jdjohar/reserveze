@@ -57,20 +57,87 @@ export default function MerchantServices() {
     isActive: true
   });
 
-  // Load services from MongoDB on mount
+  // Location scopes
+  const [dbCalendars, setDbCalendars] = useState<any[]>([]);
+  const [isRestrictedManager, setIsRestrictedManager] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return !!localStorage.getItem('assigned_calendar_ids');
+    }
+    return false;
+  });
+  const [assignedCalendarIds, setAssignedCalendarIds] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const rawAssigned = localStorage.getItem('assigned_calendar_ids');
+      if (rawAssigned) {
+        try {
+          const parsed = JSON.parse(rawAssigned);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+    }
+    return [];
+  });
+  const [selectedCalendarId, setSelectedCalendarId] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const rawAssigned = localStorage.getItem('assigned_calendar_ids');
+      if (rawAssigned) {
+        try {
+          const parsed = JSON.parse(rawAssigned);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed[0];
+          }
+        } catch {}
+      }
+    }
+    return '';
+  });
+  const [syncing, setSyncing] = useState(false);
+  const [isCustom, setIsCustom] = useState(true);
+
+  // Initialize and load calendars
   useEffect(() => {
-    const fetchServices = async () => {
+    const initPage = async () => {
       try {
         const storedBizId = typeof window !== 'undefined' ? localStorage.getItem('merchant_business_id') : null;
-        const url = storedBizId ? `/api/services?businessId=${storedBizId}` : '/api/services';
+        if (!storedBizId) return;
+
+        // Fetch calendars
+        const calRes = await fetch(`/api/calendars?businessId=${storedBizId}`);
+        const calData = await calRes.json();
+        if (calData.success) {
+          setDbCalendars(calData.calendars);
+        }
+      } catch (err) {
+        console.error('Failed to load initial metadata:', err);
+      }
+    };
+    initPage();
+  }, []);
+
+  // Fetch services when selectedCalendarId changes
+  useEffect(() => {
+    const fetchServices = async () => {
+      setLoading(true);
+      try {
+        const storedBizId = typeof window !== 'undefined' ? localStorage.getItem('merchant_business_id') : null;
+        if (!storedBizId) return;
+
+        let url = `/api/services?businessId=${storedBizId}`;
+        if (selectedCalendarId) {
+          url += `&calendarId=${selectedCalendarId}`;
+        }
+        
         const res = await fetch(url);
         const data = await res.json();
         if (data.success) {
           const mapped = data.services.map((s: any) => ({
             ...s,
-            id: s._id // Map Mongoose _id to frontend component id
+            id: s._id
           }));
           setServices(mapped);
+          setIsCustom(data.isCustom ?? true);
         }
       } catch (err) {
         console.error('Error fetching services from MongoDB:', err);
@@ -79,7 +146,7 @@ export default function MerchantServices() {
       }
     };
     fetchServices();
-  }, []);
+  }, [selectedCalendarId]);
 
   const handleToggleActive = async (id: string) => {
     const service = services.find(s => s.id === id);
@@ -142,6 +209,7 @@ export default function MerchantServices() {
 
     const payload = {
       businessId: storedBizId,
+      calendarId: selectedCalendarId || undefined,
       name: currentService.name,
       durationHours: hours,
       durationMinutes: mins,
@@ -167,6 +235,18 @@ export default function MerchantServices() {
           setServices(services.map(s => s.id === currentService.id ? { ...data.service, id: data.service._id } : s));
         }
       } else {
+        // If we are in central fallback mode for a location branch, sync central templates first!
+        if (selectedCalendarId && !isCustom) {
+          await fetch('/api/services/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              businessId: storedBizId,
+              calendarId: selectedCalendarId
+            })
+          });
+        }
+
         // Create new document in MongoDB
         const res = await fetch('/api/services', {
           method: 'POST',
@@ -175,7 +255,17 @@ export default function MerchantServices() {
         });
         const data = await res.json();
         if (data.success) {
-          setServices([...services, { ...data.service, id: data.service._id }]);
+          if (selectedCalendarId) {
+            // Re-fetch services to load the freshly synced templates and the new service
+            const refRes = await fetch(`/api/services?businessId=${storedBizId}&calendarId=${selectedCalendarId}`);
+            const refData = await refRes.json();
+            if (refData.success) {
+              setServices(refData.services.map((s: any) => ({ ...s, id: s._id })));
+              setIsCustom(refData.isCustom ?? true);
+            }
+          } else {
+            setServices([...services, { ...data.service, id: data.service._id }]);
+          }
         }
       }
     } catch (err) {
@@ -200,6 +290,74 @@ export default function MerchantServices() {
       });
     } catch (err) {
       console.error('Failed to delete service from MongoDB:', err);
+    }
+  };
+
+  const handleSyncServices = async () => {
+    if (!selectedCalendarId) return;
+    setSyncing(true);
+    try {
+      const storedBizId = typeof window !== 'undefined' ? localStorage.getItem('merchant_business_id') : null;
+      if (!storedBizId) return;
+
+      const res = await fetch('/api/services/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessId: storedBizId,
+          calendarId: selectedCalendarId
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message || 'Services synced successfully.');
+        // Refresh the list
+        const url = `/api/services?businessId=${storedBizId}&calendarId=${selectedCalendarId}`;
+        const refRes = await fetch(url);
+        const refData = await refRes.json();
+        if (refData.success) {
+          setServices(refData.services.map((s: any) => ({ ...s, id: s._id })));
+          setIsCustom(refData.isCustom ?? true);
+        }
+      } else {
+        alert(data.error || 'Failed to sync services.');
+      }
+    } catch (err) {
+      console.error('Failed to sync services:', err);
+      alert('Connection error. Please try again.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleResetToCentral = async () => {
+    if (!confirm('Are you sure you want to delete all custom service overrides for this location and revert back to central business services? This cannot be undone.')) return;
+    setSyncing(true);
+    try {
+      const storedBizId = typeof window !== 'undefined' ? localStorage.getItem('merchant_business_id') : null;
+      if (!storedBizId || !selectedCalendarId) return;
+
+      const res = await fetch(`/api/services?businessId=${storedBizId}&calendarId=${selectedCalendarId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Custom overrides deleted. Switched back to central business services.');
+        // Refresh
+        const refRes = await fetch(`/api/services?businessId=${storedBizId}&calendarId=${selectedCalendarId}`);
+        const refData = await refRes.json();
+        if (refData.success) {
+          setServices(refData.services.map((s: any) => ({ ...s, id: s._id })));
+          setIsCustom(refData.isCustom ?? true);
+        }
+      } else {
+        alert(data.error || 'Failed to reset services.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Connection error. Please try again.');
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -234,17 +392,45 @@ export default function MerchantServices() {
           
           {/* Header Search & Actions */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="relative w-full sm:w-80">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
-                <Search className="w-4 h-4" />
-              </span>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search services..."
-                className="w-full bg-surface-container-lowest text-xs rounded-lg pl-9 pr-4 py-2.5 border border-outline-variant/30 focus:outline-none"
-              />
+            <div className="flex flex-col sm:flex-row w-full sm:w-auto items-center gap-3">
+              <div className="relative w-full sm:w-80">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
+                  <Search className="w-4 h-4" />
+                </span>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search services..."
+                  className="w-full bg-surface-container-lowest text-xs rounded-lg pl-9 pr-4 py-2.5 border border-outline-variant/30 focus:outline-none"
+                />
+              </div>
+
+              {/* Location Scope Selector */}
+              <div className="w-full sm:w-64">
+                {isRestrictedManager ? (
+                  <select
+                    value={selectedCalendarId}
+                    disabled
+                    className="w-full bg-surface-container-lowest text-xs rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none font-bold text-on-surface-variant opacity-75 cursor-not-allowed"
+                  >
+                    {dbCalendars.filter(cal => assignedCalendarIds.includes(cal._id)).map(cal => (
+                      <option key={cal._id} value={cal._id}>📍 {cal.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    value={selectedCalendarId}
+                    onChange={(e) => setSelectedCalendarId(e.target.value)}
+                    className="w-full bg-surface-container-lowest text-xs rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none font-bold text-on-surface"
+                  >
+                    <option value="">🏢 Central Business Services</option>
+                    {dbCalendars.map(cal => (
+                      <option key={cal._id} value={cal._id}>📍 {cal.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
             </div>
 
             <button 
@@ -270,10 +456,82 @@ export default function MerchantServices() {
             </button>
           </div>
 
-          {/* Loading Indicator */}
+          {/* Location Scope Banner Info */}
+          {selectedCalendarId && !loading && (
+            <div className={`border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm mb-6 ${
+              isCustom 
+                ? 'bg-emerald-50/40 border-emerald-100/60' 
+                : 'bg-indigo-50/40 border-indigo-100/60'
+            }`}>
+              <div className="space-y-1">
+                <h5 className="font-extrabold text-[13px] text-on-surface flex items-center gap-1.5">
+                  <span className={isCustom ? 'text-emerald-600' : 'text-indigo-600'}>📍</span>
+                  {isCustom ? 'Location Custom Services Enabled' : 'Central Business Services Active'}
+                </h5>
+                <p className="text-xs text-on-surface-variant max-w-2xl leading-relaxed">
+                  {isCustom 
+                    ? 'This location is using custom service overrides. Any edits or deactivations here will only affect this branch and will not change central business templates.' 
+                    : 'Currently using standard central business services. Any edits or deactivations are disabled until you enable location-specific custom services.'}
+                </p>
+              </div>
+              <div>
+                {isCustom ? (
+                  <button
+                    onClick={handleResetToCentral}
+                    disabled={syncing}
+                    className="w-full sm:w-auto bg-surface-container-lowest hover:bg-red-50 text-error border border-outline-variant/30 hover:border-red-200 font-bold text-xs px-4 py-2.5 rounded-lg transition-all shadow-sm"
+                  >
+                    Reset to Central Services
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSyncServices}
+                    disabled={syncing}
+                    className="w-full sm:w-auto bg-primary hover:bg-primary-container text-on-primary font-bold text-xs px-4 py-2.5 rounded-lg transition-all shadow-md"
+                  >
+                    {syncing ? 'Enabling...' : 'Enable Custom Services'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="flex justify-center items-center py-20 text-xs text-on-surface-variant font-bold">
               Fetching services from MongoDB...
+            </div>
+          ) : services.length === 0 ? (
+            selectedCalendarId ? (
+              <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-12 text-center space-y-4 max-w-xl mx-auto shadow-sm">
+                <div className="bg-primary/10 text-primary w-12 h-12 rounded-full flex items-center justify-center mx-auto">
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <h3 className="font-extrabold text-sm text-on-surface">No custom services setup for this location</h3>
+                <p className="text-xs text-on-surface-variant max-w-sm mx-auto leading-relaxed">
+                  You can sync all services from the primary central business to this location. You can then edit or customize them specifically for this branch without affecting central settings.
+                </p>
+                <button
+                  onClick={handleSyncServices}
+                  disabled={syncing}
+                  className="bg-primary hover:bg-primary-container text-on-primary font-bold text-xs px-4 py-2.5 rounded-lg transition-all"
+                >
+                  {syncing ? 'Syncing central services...' : 'Sync Central Business Services'}
+                </button>
+              </div>
+            ) : (
+              <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-16 text-center space-y-3 max-w-lg mx-auto">
+                <div className="bg-primary/10 text-primary w-12 h-12 rounded-full flex items-center justify-center mx-auto">
+                  <Plus className="w-6 h-6" />
+                </div>
+                <h3 className="font-extrabold text-sm text-on-surface">No Central Services Found</h3>
+                <p className="text-xs text-on-surface-variant leading-relaxed">
+                  There are no central service offerings registered for the business yet. Click "Add New Service" to create one.
+                </p>
+              </div>
+            )
+          ) : filteredServices.length === 0 ? (
+            <div className="text-center py-12 text-xs text-on-surface-variant italic font-semibold">
+              No matching services found for "{search}".
             </div>
           ) : (
             /* Cards Grid */
@@ -286,58 +544,86 @@ export default function MerchantServices() {
                   }`}
                 >
                   <div>
-                    {/* Service Image banner */}
-                    <div className="h-40 w-full bg-surface-container relative overflow-hidden flex items-center justify-center border-b border-outline-variant/20">
-                      {service.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
+                    {/* Optional Image */}
+                    {service.imageUrl ? (
+                      <div className="h-44 w-full relative overflow-hidden bg-surface-container">
                         <img 
                           src={service.imageUrl} 
-                          alt={service.name} 
-                          className="object-cover w-full h-full"
+                          alt={service.name}
+                          className="w-full h-full object-cover"
                         />
-                      ) : (
-                        <ImageIcon className="w-10 h-10 text-outline/30" />
-                      )}
-                      <span className="absolute top-3 right-3 text-[10px] font-extrabold text-primary bg-surface-container-lowest px-2.5 py-1 rounded-full shadow-sm">
-                        ${service.price}
-                      </span>
-                    </div>
+                        {!service.isActive && (
+                          <div className="absolute inset-0 bg-surface-container-highest/60 backdrop-blur-[1px] flex items-center justify-center">
+                            <span className="bg-surface-container-lowest text-[10px] text-on-surface font-extrabold uppercase px-2.5 py-1 rounded-md tracking-wider border border-outline-variant/30">Inactive</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="h-28 w-full bg-surface-container flex items-center justify-center text-outline-variant relative">
+                        <ImageIcon className="w-8 h-8 opacity-40" />
+                        {!service.isActive && (
+                          <div className="absolute inset-0 bg-surface-container-highest/60 backdrop-blur-[1px] flex items-center justify-center">
+                            <span className="bg-surface-container-lowest text-[10px] text-on-surface font-extrabold uppercase px-2.5 py-1 rounded-md tracking-wider border border-outline-variant/30">Inactive</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div className="p-5 space-y-4">
-                      <div className="flex justify-between items-start">
-                        <h3 className="font-extrabold text-sm text-on-surface leading-snug">{service.name}</h3>
+                      
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="space-y-1">
+                          <h4 className="font-extrabold text-sm text-on-surface leading-snug line-clamp-1" title={service.name}>{service.name}</h4>
+                          {selectedCalendarId && !isCustom && (
+                            <span className="inline-block bg-indigo-50 text-indigo-600 text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded tracking-wider border border-indigo-100/50">Central Template</span>
+                          )}
+                        </div>
                         <button 
-                          onClick={() => handleToggleActive(service.id)}
-                          className={`text-on-surface-variant transition-colors ${service.isActive ? 'text-primary' : 'text-outline/40'}`}
+                          onClick={() => {
+                            if (selectedCalendarId && !isCustom) {
+                              alert('You are currently viewing Central Services. Please enable Custom Services for this location to edit or deactivate them.');
+                              return;
+                            }
+                            handleToggleActive(service.id);
+                          }}
+                          className={`text-on-surface-variant hover:text-on-surface transition-colors ${
+                            selectedCalendarId && !isCustom ? 'opacity-50 cursor-not-allowed' : ''
+                          }`}
+                          title={service.isActive ? "Deactivate Service" : "Activate Service"}
                         >
-                          {service.isActive ? <ToggleRight className="w-8 h-8" /> : <ToggleLeft className="w-8 h-8" />}
+                          {service.isActive ? (
+                            <ToggleRight className="w-6 h-6 text-primary" />
+                          ) : (
+                            <ToggleLeft className="w-6 h-6 text-outline" />
+                          )}
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4 py-3 border-y border-outline-variant/20 text-xs">
+                      <div className="grid grid-cols-2 gap-3 border-y border-outline-variant/20 py-3 text-xs font-semibold text-on-surface-variant">
                         <div className="space-y-1">
-                          <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Duration</span>
-                          <div className="font-bold flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5 text-primary" />
+                          <span className="text-[9px] text-outline-variant uppercase tracking-wider font-extrabold">Price Rate</span>
+                          <div className="flex items-center gap-1 font-bold text-on-surface text-[13px]">
+                            <DollarSign className="w-4 h-4 text-primary" />
+                            {service.price}
+                          </div>
+                        </div>
+                        <div className="space-y-1 border-l border-outline-variant/20 pl-3">
+                          <span className="text-[9px] text-outline-variant uppercase tracking-wider font-extrabold">Duration</span>
+                          <div className="flex items-center gap-1 font-bold text-on-surface text-[13px]">
+                            <Clock className="w-4 h-4 text-primary" />
                             {formatDuration(service.durationHours, service.durationMinutes)}
                           </div>
                         </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 border-b border-outline-variant/20 pb-3 text-xs font-semibold text-on-surface-variant">
                         <div className="space-y-1">
-                          <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Max Capacity</span>
-                          <div className="font-bold flex items-center gap-1">
+                          <span className="text-[9px] text-outline-variant uppercase tracking-wider font-extrabold">Max Capacity</span>
+                          <div className="flex items-center gap-1 font-semibold text-[11px] text-on-surface">
                             <Users className="w-3.5 h-3.5 text-secondary" />
                             {service.maxCapacity} {service.maxCapacity === 1 ? 'person' : 'persons'}
                           </div>
                         </div>
-                      </div>
-
-                      <div className="flex items-center justify-between text-xs pt-1">
-                        <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider flex items-center gap-1">
-                          <CalendarCheck className="w-3.5 h-3.5 text-tertiary" /> Advance Booking
-                        </span>
-                        <span className="font-bold text-on-surface">
-                          {formatAdvanceBooking(service.advanceBookingDays, service.advanceBookingHours, service.advanceBookingMinutes)}
-                        </span>
                       </div>
 
                     </div>
@@ -345,14 +631,30 @@ export default function MerchantServices() {
 
                   <div className="p-5 pt-0 flex gap-2.5">
                     <button 
-                      onClick={() => handleEditService(service)}
-                      className="flex-1 flex items-center justify-center gap-1 border border-outline-variant/40 hover:bg-surface-container-low text-on-surface py-2 rounded-lg text-[11px] font-bold transition-colors"
+                      onClick={() => {
+                        if (selectedCalendarId && !isCustom) {
+                          alert('You are currently viewing Central Services. Please enable Custom Services for this location to edit them.');
+                          return;
+                        }
+                        handleEditService(service);
+                      }}
+                      className={`flex-1 flex items-center justify-center gap-1 border border-outline-variant/40 hover:bg-surface-container-low text-on-surface py-2 rounded-lg text-[11px] font-bold transition-colors ${
+                        selectedCalendarId && !isCustom ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
                     >
                       <Edit2 className="w-3.5 h-3.5" /> Edit Details
                     </button>
                     <button 
-                      onClick={() => handleDeleteService(service.id)}
-                      className="p-2 border border-outline-variant/40 hover:bg-red-50 text-error rounded-lg transition-colors"
+                      onClick={() => {
+                        if (selectedCalendarId && !isCustom) {
+                          alert('You are currently viewing Central Services. Central templates cannot be deleted from branch panels.');
+                          return;
+                        }
+                        handleDeleteService(service.id);
+                      }}
+                      className={`p-2 border border-outline-variant/40 hover:bg-red-50 text-error rounded-lg transition-colors ${
+                        selectedCalendarId && !isCustom ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>

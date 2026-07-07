@@ -45,6 +45,43 @@ export default function MerchantTeamPage() {
   const [role, setRole] = useState<'MANAGER' | 'STAFF' | 'SPECIALIST'>('STAFF');
   const [selectedCalendars, setSelectedCalendars] = useState<string[]>([]);
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
+  const [password, setPassword] = useState('');
+
+  // Scoped locations
+  const [isRestrictedManager, setIsRestrictedManager] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return !!localStorage.getItem('assigned_calendar_ids');
+    }
+    return false;
+  });
+  const [assignedCalendarIds, setAssignedCalendarIds] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem('assigned_calendar_ids');
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+    }
+    return [];
+  });
+  const [selectedCalendarId, setSelectedCalendarId] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem('assigned_calendar_ids');
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed[0];
+          }
+        } catch {}
+      }
+    }
+    return '';
+  });
 
   const fetchTeam = async () => {
     try {
@@ -52,7 +89,11 @@ export default function MerchantTeamPage() {
       if (!storedBizId) return;
 
       // Load team members
-      const teamRes = await fetch(`/api/team?businessId=${storedBizId}`);
+      let url = `/api/team?businessId=${storedBizId}`;
+      if (selectedCalendarId) {
+        url += `&calendarId=${selectedCalendarId}`;
+      }
+      const teamRes = await fetch(url);
       const teamData = await teamRes.json();
       if (teamData.success) {
         setEmployees(teamData.employees);
@@ -80,7 +121,7 @@ export default function MerchantTeamPage() {
 
   useEffect(() => {
     fetchTeam();
-  }, []);
+  }, [selectedCalendarId]);
 
   const handleOpenAdd = () => {
     setEditingEmployee(null);
@@ -89,8 +130,9 @@ export default function MerchantTeamPage() {
     setEmail('');
     setPhone('');
     setRole('STAFF');
-    setSelectedCalendars([]);
+    setSelectedCalendars(isRestrictedManager ? assignedCalendarIds : []);
     setSelectedServices([]);
+    setPassword('');
     setShowModal(true);
   };
 
@@ -103,6 +145,7 @@ export default function MerchantTeamPage() {
     setRole(emp.role);
     setSelectedCalendars(emp.calendarIds || []);
     setSelectedServices(emp.serviceIds || []);
+    setPassword('');
     setShowModal(true);
   };
 
@@ -125,7 +168,8 @@ export default function MerchantTeamPage() {
         phone,
         role,
         calendarIds: selectedCalendars,
-        serviceIds: selectedServices
+        serviceIds: selectedServices,
+        password: password || undefined
       };
 
       if (isEdit && editingEmployee) {
@@ -142,6 +186,9 @@ export default function MerchantTeamPage() {
       if (data.success) {
         setShowModal(false);
         fetchTeam();
+        if (data.tempPassword && !password) {
+          alert(`Team member created successfully!\n\nTemporary Login Password is:\n${data.tempPassword}\n\nPlease share this password with them to log in.`);
+        }
       } else {
         alert(data.error || 'Failed to save team member.');
       }
@@ -197,17 +244,45 @@ export default function MerchantTeamPage() {
         <main className="flex-1 p-8 space-y-6 overflow-y-auto">
           
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="relative w-full sm:w-80">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
-                <Search className="w-4 h-4" />
-              </span>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search team members..."
-                className="w-full bg-surface-container-lowest text-xs rounded-lg pl-9 pr-4 py-2.5 border border-outline-variant/30 focus:outline-none focus:border-primary/50"
-              />
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+              <div className="relative w-full sm:w-80">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
+                  <Search className="w-4 h-4" />
+                </span>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search team members..."
+                  className="w-full bg-surface-container-lowest text-xs rounded-lg pl-9 pr-4 py-2.5 border border-outline-variant/30 focus:outline-none focus:border-primary/50"
+                />
+              </div>
+
+              {/* Location Scope Selector */}
+              <div className="w-full sm:w-48 shrink-0">
+                {isRestrictedManager ? (
+                  <select
+                    value={selectedCalendarId}
+                    disabled
+                    className="w-full bg-surface-container text-xs rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none font-bold text-on-surface-variant opacity-75 cursor-not-allowed"
+                  >
+                    {calendars.filter(cal => assignedCalendarIds.includes(cal._id)).map(cal => (
+                      <option key={cal._id} value={cal._id}>📍 {cal.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    value={selectedCalendarId}
+                    onChange={(e) => setSelectedCalendarId(e.target.value)}
+                    className="w-full bg-surface-container-lowest text-xs rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none font-bold text-on-surface"
+                  >
+                    <option value="">🏢 All Locations (Central)</option>
+                    {calendars.map(cal => (
+                      <option key={cal._id} value={cal._id}>📍 {cal.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
             </div>
 
             <button 
@@ -405,31 +480,37 @@ export default function MerchantTeamPage() {
                 >
                   <option value="STAFF">Standard Staff (Scheduling availability only)</option>
                   <option value="SPECIALIST">Specialist (Linked to specific services)</option>
-                  <option value="MANAGER">Location Manager (Access control permissions)</option>
+                  {!isRestrictedManager && (
+                    <option value="MANAGER">Location Manager (Access control permissions)</option>
+                  )}
                 </select>
               </div>
 
+
+
               {/* Assign calendars locations */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-on-surface-variant uppercase block">Assign Locations (Branches)</label>
-                <div className="space-y-1.5 max-h-28 overflow-y-auto bg-surface-container/50 border border-outline-variant/20 rounded-xl p-3">
-                  {calendars.length === 0 ? (
-                    <span className="text-[10px] text-on-surface-variant italic">No locations configured yet.</span>
-                  ) : (
-                    calendars.map(cal => (
-                      <label key={cal._id} className="flex items-center gap-2 cursor-pointer">
-                        <input 
-                          type="checkbox"
-                          checked={selectedCalendars.includes(cal._id)}
-                          onChange={() => handleToggleCalendar(cal._id)}
-                          className="rounded border-outline-variant/60 text-primary focus:ring-primary w-4 h-4"
-                        />
-                        <span className="font-semibold text-on-surface">{cal.name}</span>
-                      </label>
-                    ))
-                  )}
+              {!isRestrictedManager && (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-on-surface-variant uppercase block">Assign Locations (Branches)</label>
+                  <div className="space-y-1.5 max-h-28 overflow-y-auto bg-surface-container/50 border border-outline-variant/20 rounded-xl p-3">
+                    {calendars.length === 0 ? (
+                      <span className="text-[10px] text-on-surface-variant italic">No locations configured yet.</span>
+                    ) : (
+                      calendars.map(cal => (
+                        <label key={cal._id} className={`flex items-center gap-2 cursor-pointer`}>
+                          <input 
+                            type="checkbox"
+                            checked={selectedCalendars.includes(cal._id)}
+                            onChange={() => handleToggleCalendar(cal._id)}
+                            className="rounded border-outline-variant/60 text-primary focus:ring-primary w-4 h-4"
+                          />
+                          <span className="font-semibold text-on-surface">{cal.name}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Assign performable services */}
               <div className="space-y-1.5">

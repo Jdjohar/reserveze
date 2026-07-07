@@ -114,6 +114,7 @@ const AvailabilitySchema = new Schema<IAvailability>({
 // Service Schema
 export interface IService extends Document {
   businessId: mongoose.Types.ObjectId;
+  calendarId?: mongoose.Types.ObjectId;
   name: string;
   duration: number; // total duration in minutes (calculated from hours + minutes)
   durationHours: number;
@@ -131,6 +132,7 @@ export interface IService extends Document {
 
 const ServiceSchema = new Schema<IService>({
   businessId: { type: Schema.Types.ObjectId, ref: 'Business', required: true, index: true },
+  calendarId: { type: Schema.Types.ObjectId, ref: 'Calendar', index: true },
   name: { type: String, required: true },
   duration: { type: Number, required: true, default: 30 },
   durationHours: { type: Number, default: 0 },
@@ -147,6 +149,7 @@ const ServiceSchema = new Schema<IService>({
 // Client Schema
 export interface IClient extends Document {
   businessId: mongoose.Types.ObjectId;
+  calendarId?: mongoose.Types.ObjectId;
   firstName: string;
   lastName: string;
   email: string;
@@ -159,6 +162,7 @@ export interface IClient extends Document {
 
 const ClientSchema = new Schema<IClient>({
   businessId: { type: Schema.Types.ObjectId, ref: 'Business', required: true, index: true },
+  calendarId: { type: Schema.Types.ObjectId, ref: 'Calendar', index: true },
   firstName: { type: String, required: true },
   lastName: { type: String, required: true },
   email: { type: String, required: true },
@@ -255,6 +259,18 @@ const EmployeeSchema = new Schema<IEmployee>({
 }, { timestamps: true });
 
 // Compiles and exports models, checks for existing compilations in Next.js dev server.
+if (process.env.NODE_ENV !== 'production') {
+  delete mongoose.models.User;
+  delete mongoose.models.Business;
+  delete mongoose.models.Calendar;
+  delete mongoose.models.Availability;
+  delete mongoose.models.Service;
+  delete mongoose.models.Client;
+  delete mongoose.models.Appointment;
+  delete mongoose.models.BlockedTime;
+  delete mongoose.models.Employee;
+}
+
 export const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
 export const Business: Model<IBusiness> = mongoose.models.Business || mongoose.model<IBusiness>('Business', BusinessSchema);
 export const Calendar: Model<ICalendar> = mongoose.models.Calendar || mongoose.model<ICalendar>('Calendar', CalendarSchema);
