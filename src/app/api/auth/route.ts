@@ -13,7 +13,23 @@ export async function POST(req: NextRequest) {
   try {
     await connectToDatabase();
     const body = await req.json();
-    const { action, email, password, name, businessName } = body;
+    const { action, email, password, name, businessName, newPassword } = body;
+
+    if (action === 'change-password') {
+      if (!email || !newPassword) {
+        return NextResponse.json({ success: false, error: 'Email and new password are required' }, { status: 400 });
+      }
+      const cleanEmail = email.toLowerCase().trim();
+      const user = await User.findOne({ email: cleanEmail });
+      if (!user) {
+        return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+      }
+      const passwordHash = hashPassword(newPassword);
+      user.passwordHash = passwordHash;
+      user.needsPasswordChange = false;
+      await user.save();
+      return NextResponse.json({ success: true, message: 'Password updated successfully' });
+    }
 
     if (!email || !password) {
       return NextResponse.json({ success: false, error: 'Email and password are required' }, { status: 400 });
@@ -108,7 +124,8 @@ export async function POST(req: NextRequest) {
           role: user ? user.role : 'MERCHANT'
         },
         businessId,
-        assignedCalendarIds
+        assignedCalendarIds,
+        needsPasswordChange: !!(user && user.needsPasswordChange)
       });
     }
 

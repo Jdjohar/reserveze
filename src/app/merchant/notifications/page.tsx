@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
 import { 
@@ -19,6 +19,15 @@ import {
 
 export default function MerchantNotifications() {
   const [primaryChannel, setPrimaryChannel] = useState<'email' | 'whatsapp' | 'sms'>('email');
+  
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const assignedCalId = localStorage.getItem('assigned_calendar_ids');
+      if (assignedCalId) {
+        window.location.href = '/merchant/dashboard';
+      }
+    }
+  }, []);
   const [cascadeEnabled, setCascadeEnabled] = useState(true);
   const [cooldownEnabled, setCooldownEnabled] = useState(true);
   const [limitEnabled, setLimitEnabled] = useState(true);

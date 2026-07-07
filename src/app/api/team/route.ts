@@ -67,10 +67,12 @@ export async function POST(req: NextRequest) {
         name: `${body.firstName} ${body.lastName}`,
         email: cleanEmail,
         passwordHash,
-        role: 'MERCHANT'
+        role: 'MERCHANT',
+        needsPasswordChange: true
       });
     } else {
       user.passwordHash = passwordHash;
+      user.needsPasswordChange = true;
       await user.save();
     }
 

@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
       itemMetadata.credits = credits.toString();
     }
 
+    const origin = req.headers.get('origin') || 'http://localhost:3000';
     const successParams = planType ? `planType=${planType}&price=${price}` : `credits=${credits}&price=${price}`;
 
     if (stripeSecret) {
@@ -44,15 +45,18 @@ export async function POST(req: NextRequest) {
           },
         ],
         mode: 'payment',
-        success_url: `http://localhost:3000/merchant/plans?success=true&session_id={CHECKOUT_SESSION_ID}&${successParams}`,
-        cancel_url: `http://localhost:3000/merchant/plans?cancelled=true`,
+        success_url: `${origin}/merchant/plans?success=true&session_id={CHECKOUT_SESSION_ID}&${successParams}`,
+        cancel_url: `${origin}/merchant/plans?cancelled=true`,
+        payment_intent_data: {
+          statement_descriptor: 'Reserveze',
+        },
         metadata: itemMetadata,
       });
 
       return NextResponse.json({ success: true, url: session.url });
     } else {
       console.log(`[Stripe Checkout] Simulator mode active (STRIPE_SECRET_KEY missing). Redirecting to mock success.`);
-      const mockSuccessUrl = `http://localhost:3000/merchant/plans?success=true&mock=true&${successParams}`;
+      const mockSuccessUrl = `${origin}/merchant/plans?success=true&mock=true&${successParams}`;
       return NextResponse.json({ success: true, url: mockSuccessUrl });
     }
   } catch (error: any) {

@@ -6,6 +6,7 @@ export interface IUser extends Document {
   passwordHash?: string;
   name: string;
   role: 'SUPER_ADMIN' | 'MERCHANT' | 'CUSTOMER';
+  needsPasswordChange?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -15,6 +16,7 @@ const UserSchema = new Schema<IUser>({
   passwordHash: { type: String },
   name: { type: String, required: true },
   role: { type: String, enum: ['SUPER_ADMIN', 'MERCHANT', 'CUSTOMER'], default: 'MERCHANT' },
+  needsPasswordChange: { type: Boolean, default: false }
 }, { timestamps: true });
 
 // Business Schema
@@ -258,6 +260,25 @@ const EmployeeSchema = new Schema<IEmployee>({
   isActive: { type: Boolean, default: true }
 }, { timestamps: true });
 
+// Transaction Schema
+export interface ITransaction extends Document {
+  businessId: mongoose.Types.ObjectId;
+  amount: number;
+  credits: number;
+  sessionId?: string;
+  status: 'PAID' | 'FAILED';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const TransactionSchema = new Schema<ITransaction>({
+  businessId: { type: Schema.Types.ObjectId, ref: 'Business', required: true, index: true },
+  amount: { type: Number, required: true },
+  credits: { type: Number, required: true },
+  sessionId: { type: String },
+  status: { type: String, enum: ['PAID', 'FAILED'], default: 'PAID' }
+}, { timestamps: true });
+
 // Compiles and exports models, checks for existing compilations in Next.js dev server.
 if (process.env.NODE_ENV !== 'production') {
   delete mongoose.models.User;
@@ -269,6 +290,7 @@ if (process.env.NODE_ENV !== 'production') {
   delete mongoose.models.Appointment;
   delete mongoose.models.BlockedTime;
   delete mongoose.models.Employee;
+  delete mongoose.models.Transaction;
 }
 
 export const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
@@ -280,3 +302,4 @@ export const Client: Model<IClient> = mongoose.models.Client || mongoose.model<I
 export const Appointment: Model<IAppointment> = mongoose.models.Appointment || mongoose.model<IAppointment>('Appointment', AppointmentSchema);
 export const BlockedTime: Model<IBlockedTime> = mongoose.models.BlockedTime || mongoose.model<IBlockedTime>('BlockedTime', BlockedTimeSchema);
 export const Employee: Model<IEmployee> = mongoose.models.Employee || mongoose.model<IEmployee>('Employee', EmployeeSchema);
+export const Transaction: Model<ITransaction> = mongoose.models.Transaction || mongoose.model<ITransaction>('Transaction', TransactionSchema);

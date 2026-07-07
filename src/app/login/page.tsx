@@ -65,6 +65,11 @@ export default function LoginPage() {
             } else {
               localStorage.removeItem('assigned_calendar_ids');
             }
+            if (data.needsPasswordChange) {
+              localStorage.setItem('needs_password_change', 'true');
+            } else {
+              localStorage.removeItem('needs_password_change');
+            }
           }
           setMessage('Login successful! Redirecting...');
           setTimeout(() => {

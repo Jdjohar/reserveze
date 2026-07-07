@@ -47,7 +47,7 @@ export async function PUT(req: NextRequest) {
   try {
     await connectToDatabase();
     const body = await req.json();
-    const { businessId, slug, name, phone, whatsapp, email, logoUrl, address, plan, buyCredits } = body;
+    const { businessId, slug, name, phone, whatsapp, email, logoUrl, address, plan, buyCredits, price } = body;
 
     const id = businessId || DEMO_BUSINESS_ID.toString();
 
@@ -96,6 +96,23 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Business not found' }, { status: 404 });
     }
 
+    // Log Transaction record
+    if (buyCredits !== undefined && typeof buyCredits === 'number') {
+      try {
+        const parsedPrice = price !== undefined ? Number(price) : Number((buyCredits * 0.05).toFixed(2));
+        const TransactionModel = mongoose.models.Transaction || mongoose.model('Transaction');
+        await TransactionModel.create({
+          businessId: updated._id,
+          amount: parsedPrice,
+          credits: buyCredits,
+          sessionId: 'SIM_' + Math.random().toString(36).substring(2, 10).toUpperCase(),
+          status: 'PAID'
+        });
+      } catch (txErr) {
+        console.error('Failed to log simulated transaction:', txErr);
+      }
+    }
+
     // Send Billing Invoice Email (Async / Non-blocking)
     if (updated && updated.email && (plan !== undefined || buyCredits !== undefined)) {
       try {
@@ -113,7 +130,7 @@ export async function PUT(req: NextRequest) {
         }
 
         if (buyCredits !== undefined && buyCredits > 0) {
-          const creditsPrice = Number((buyCredits * 0.05).toFixed(2));
+          const creditsPrice = price !== undefined ? Number(price) : Number((buyCredits * 0.05).toFixed(2));
           billingItemHtml += `
             <tr>
               <td style="padding: 10px 0; border-bottom: 1px solid #eee;"><strong>Prepaid Booking Credits (${buyCredits} credits)</strong></td>

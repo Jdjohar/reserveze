@@ -31,6 +31,13 @@ export default function MerchantProfile() {
   const [success, setSuccess] = useState('');
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const assignedCalId = localStorage.getItem('assigned_calendar_ids');
+      if (assignedCalId) {
+        window.location.href = '/merchant/dashboard';
+        return;
+      }
+    }
     const fetchBusiness = async () => {
       try {
         const storedBizId = typeof window !== 'undefined' ? localStorage.getItem('merchant_business_id') : null;

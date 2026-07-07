@@ -25,6 +25,14 @@ export default function Sidebar({ className = '' }: SidebarProps) {
   const pathname = usePathname();
   
   const [bookingCredits, setBookingCredits] = useState(50);
+  const [isRestrictedManager, setIsRestrictedManager] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const assignedCalId = localStorage.getItem('assigned_calendar_ids');
+      setIsRestrictedManager(!!assignedCalId);
+    }
+  }, []);
 
   useEffect(() => {
     const fetchCredits = async () => {
@@ -60,10 +68,10 @@ export default function Sidebar({ className = '' }: SidebarProps) {
     { name: 'Team Members', href: '/merchant/team', icon: UserCheck },
     { name: 'Client CRM', href: '/merchant/clients', icon: Users },
     { name: 'Availability', href: '/merchant/availability', icon: Clock },
-    { name: 'Notifications UI', href: '/merchant/notifications', icon: BellRing },
-    { name: 'Billing Plans', href: '/merchant/plans', icon: Sparkles },
+    ...(!isRestrictedManager ? [{ name: 'Notifications UI', href: '/merchant/notifications', icon: BellRing }] : []),
+    ...(!isRestrictedManager ? [{ name: 'Billing Plans', href: '/merchant/plans', icon: Sparkles }] : []),
     { name: 'Share Links', href: '/merchant/share', icon: QrCode },
-    { name: 'Business Profile', href: '/merchant/profile', icon: Settings },
+    ...(!isRestrictedManager ? [{ name: 'Business Profile', href: '/merchant/profile', icon: Settings }] : []),
     { name: 'Log Out', href: '/login', icon: LogOut }
   ];
 
@@ -102,30 +110,32 @@ export default function Sidebar({ className = '' }: SidebarProps) {
       </nav>
 
       {/* Credit / Status Widget */}
-      <div className="p-4 m-4 bg-surface-container rounded-xl border border-outline-variant/30 space-y-3">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-on-surface-variant font-medium">Prepaid Billing</span>
-          <span className="font-bold text-primary flex items-center gap-0.5 uppercase tracking-wider text-[10px]">
-            <Sparkles className="w-3 h-3 animate-pulse" /> Active
-          </span>
-        </div>
-        <div className="space-y-1">
-          <div className="flex justify-between text-[11px] text-on-surface-variant">
-            <span>Booking Credits</span>
-            <span className="font-bold text-primary">{bookingCredits} left</span>
+      {!isRestrictedManager && (
+        <div className="p-4 m-4 bg-surface-container rounded-xl border border-outline-variant/30 space-y-3">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-on-surface-variant font-medium">Prepaid Billing</span>
+            <span className="font-bold text-primary flex items-center gap-0.5 uppercase tracking-wider text-[10px]">
+              <Sparkles className="w-3 h-3 animate-pulse" /> Active
+            </span>
           </div>
-          <div className="w-full bg-outline-variant/30 rounded-full h-1.5 overflow-hidden">
-            <div className="bg-primary h-1.5 rounded-full transition-all duration-300" style={{ width: `${Math.min(100, (bookingCredits / 100) * 100)}%` }}></div>
+          <div className="space-y-1">
+            <div className="flex justify-between text-[11px] text-on-surface-variant">
+              <span>Booking Credits</span>
+              <span className="font-bold text-primary">{bookingCredits} left</span>
+            </div>
+            <div className="w-full bg-outline-variant/30 rounded-full h-1.5 overflow-hidden">
+              <div className="bg-primary h-1.5 rounded-full transition-all duration-300" style={{ width: `${Math.min(100, (bookingCredits / 100) * 100)}%` }}></div>
+            </div>
           </div>
+          
+          <Link 
+            href="/merchant/plans" 
+            className="block w-full text-center bg-primary/10 hover:bg-primary/15 text-primary text-[10px] font-bold py-1.5 rounded-lg transition-colors border border-primary/20"
+          >
+            Buy Booking Credits
+          </Link>
         </div>
-        
-        <Link 
-          href="/merchant/plans" 
-          className="block w-full text-center bg-primary/10 hover:bg-primary/15 text-primary text-[10px] font-bold py-1.5 rounded-lg transition-colors border border-primary/20"
-        >
-          Buy Booking Credits
-        </Link>
-      </div>
+      )}
     </aside>
   );
 }

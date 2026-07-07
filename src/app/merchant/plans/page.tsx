@@ -3,7 +3,7 @@
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
 import { useState, useEffect } from 'react';
-import { Check, ShieldCheck, Sparkles } from 'lucide-react';
+import { Check, ShieldCheck, Sparkles, CreditCard, Receipt } from 'lucide-react';
 
 interface BusinessDetails {
   _id: string;
@@ -16,7 +16,9 @@ interface BusinessDetails {
 
 export default function MerchantPlansPage() {
   const [business, setBusiness] = useState<BusinessDetails | null>(null);
+  const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingTxs, setLoadingTxs] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
@@ -38,8 +40,33 @@ export default function MerchantPlansPage() {
     }
   };
 
+  const fetchTransactions = async () => {
+    try {
+      const storedBizId = typeof window !== 'undefined' ? localStorage.getItem('merchant_business_id') : null;
+      if (!storedBizId) return;
+
+      const res = await fetch(`/api/billing/transactions?businessId=${storedBizId}`);
+      const data = await res.json();
+      if (data.success && data.transactions) {
+        setTransactions(data.transactions);
+      }
+    } catch (err) {
+      console.error('Failed to load transactions:', err);
+    } finally {
+      setLoadingTxs(false);
+    }
+  };
+
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const assignedCalId = localStorage.getItem('assigned_calendar_ids');
+      if (assignedCalId) {
+        window.location.href = '/merchant/dashboard';
+        return;
+      }
+    }
     fetchBusiness();
+    fetchTransactions();
   }, []);
 
   useEffect(() => {
@@ -63,13 +90,15 @@ export default function MerchantPlansPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   businessId: business._id,
-                  buyCredits: creditsNum
+                  buyCredits: creditsNum,
+                  price: priceNum
                 })
               });
               const data = await res.json();
               if (data.success) {
                 setBusiness(data.business);
                 setSuccess(`Successfully verified checkout session! Purchased ${creditsNum} Booking Credits for $${priceNum}!`);
+                fetchTransactions();
                 window.dispatchEvent(new Event('storage'));
               }
             } catch (err) {}
@@ -89,6 +118,7 @@ export default function MerchantPlansPage() {
                 if (data.success) {
                   setSuccess('Payment verified successfully! Your booking credits have been updated.');
                   fetchBusiness();
+                  fetchTransactions();
                   window.dispatchEvent(new Event('storage'));
                 } else {
                   setError(data.error || 'Failed to verify checkout session.');
@@ -101,6 +131,7 @@ export default function MerchantPlansPage() {
           } else {
             setSuccess(`Successfully verified checkout session! Refreshed balance details.`);
             fetchBusiness();
+            fetchTransactions();
           }
         }
         window.history.replaceState({}, '', '/merchant/plans');
@@ -253,6 +284,67 @@ export default function MerchantPlansPage() {
                   </button>
                 </div>
               </div>
+              {/* Transaction History Section */}
+              <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-2xl p-6 space-y-4 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-primary" />
+                  <h3 className="font-extrabold text-sm text-on-surface">Transaction History</h3>
+                </div>
+
+                {loadingTxs ? (
+                  <div className="text-center py-6 text-[10px] text-on-surface-variant font-bold">
+                    Loading payments receipt history...
+                  </div>
+                ) : transactions.length === 0 ? (
+                  <div className="text-center py-8 text-[10px] text-on-surface-variant font-semibold">
+                    No transactions recorded yet. Completed payments will appear here.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[11px] border-collapse">
+                      <thead>
+                        <tr className="border-b border-outline-variant/20 text-on-surface-variant font-bold uppercase tracking-wider text-[9px]">
+                          <th className="pb-3 pr-4">Date</th>
+                          <th className="pb-3 pr-4">Description</th>
+                          <th className="pb-3 pr-4">Session ID / Reference</th>
+                          <th className="pb-3 pr-4 text-right">Amount</th>
+                          <th className="pb-3 text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-outline-variant/10 text-on-surface font-medium">
+                        {transactions.map((tx) => (
+                          <tr key={tx._id} className="hover:bg-surface-container-low/20 transition-colors">
+                            <td className="py-3 pr-4 text-on-surface-variant">
+                              {new Date(tx.createdAt).toLocaleDateString(undefined, {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </td>
+                            <td className="py-3 pr-4 font-bold text-on-surface">
+                              +{tx.credits} Booking Credits
+                            </td>
+                            <td className="py-3 pr-4 font-mono text-[10px] text-on-surface-variant truncate max-w-[150px]" title={tx.sessionId}>
+                              {tx.sessionId || 'N/A'}
+                            </td>
+                            <td className="py-3 pr-4 text-right font-bold text-primary">
+                              ${tx.amount.toFixed(2)}
+                            </td>
+                            <td className="py-3 text-right">
+                              <span className="bg-green-500/10 text-green-700 border border-green-500/20 px-2 py-0.5 rounded-full font-black text-[9px] uppercase">
+                                {tx.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
             </div>
           )}
 

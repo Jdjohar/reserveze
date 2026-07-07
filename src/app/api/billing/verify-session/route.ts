@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { connectToDatabase } from '@/lib/db';
-import { Business } from '@/models';
+import { Business, Transaction } from '@/models';
 import { sendEmail } from '@/lib/email';
 
 const stripeSecret = process.env.STRIPE_SECRET_KEY || '';
@@ -41,6 +41,15 @@ export async function POST(req: NextRequest) {
         );
 
         if (updateResult.modifiedCount > 0) {
+          // Log Transaction record
+          await Transaction.create({
+            businessId,
+            amount: priceNum,
+            credits: creditsNum,
+            sessionId: session.id,
+            status: 'PAID'
+          });
+
           const updated = await Business.findById(businessId);
           if (updated && updated.email) {
             const creditsPrice = Number(priceNum.toFixed(2));
