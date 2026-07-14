@@ -45,6 +45,20 @@ export async function POST(req: NextRequest) {
     }
 
     const cleanEmail = body.email.toLowerCase().trim();
+
+    // Server-side validation
+    const { validateEmail, validatePhone } = await import('@/lib/validation');
+    const emailCheck = validateEmail(cleanEmail);
+    if (!emailCheck.isValid) {
+      return NextResponse.json({ success: false, error: 'Invalid email address format.' }, { status: 400 });
+    }
+    if (emailCheck.isDisposable) {
+      return NextResponse.json({ success: false, error: 'Disposable email addresses are not allowed.' }, { status: 400 });
+    }
+    if (body.phone && !validatePhone(body.phone)) {
+      return NextResponse.json({ success: false, error: 'Invalid phone number format.' }, { status: 400 });
+    }
+
     const finalPassword = body.password || `Reserveze-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const newEmployee = await Employee.create({
@@ -127,6 +141,21 @@ export async function PUT(req: NextRequest) {
 
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       return NextResponse.json({ success: false, error: 'Valid employee ID is required' }, { status: 400 });
+    }
+
+    // Server-side validation
+    const { validateEmail, validatePhone } = await import('@/lib/validation');
+    if (email) {
+      const emailCheck = validateEmail(email);
+      if (!emailCheck.isValid) {
+        return NextResponse.json({ success: false, error: 'Invalid email address format.' }, { status: 400 });
+      }
+      if (emailCheck.isDisposable) {
+        return NextResponse.json({ success: false, error: 'Disposable email addresses are not allowed.' }, { status: 400 });
+      }
+    }
+    if (phone && !validatePhone(phone)) {
+      return NextResponse.json({ success: false, error: 'Invalid phone number format.' }, { status: 400 });
     }
 
     const updateData: any = {};

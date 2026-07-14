@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
 import { 
@@ -36,8 +37,10 @@ interface AppointmentObj {
 }
 
 export default function MerchantDashboard() {
+  const router = useRouter();
   const [appointments, setAppointments] = useState<AppointmentObj[]>([]);
   const [loading, setLoading] = useState(true);
+  const [businessObj, setBusinessObj] = useState<any>(null);
   const [merchantName, setMerchantName] = useState('Alex');
 
   // Change password modal states
@@ -90,19 +93,62 @@ export default function MerchantDashboard() {
     const initAndFetch = async () => {
       try {
         let storedBizId = typeof window !== 'undefined' ? localStorage.getItem('merchant_business_id') : null;
-        const storedEmail = typeof window !== 'undefined' ? localStorage.getItem('merchant_email') : null;
+        let storedEmail = typeof window !== 'undefined' ? localStorage.getItem('merchant_email') : null;
+        let activeBiz = null;
 
-        // If no businessId in session, look up by logged-in user email
+        // NextAuth check if local credentials are empty
+        if (!storedBizId && !storedEmail) {
+          try {
+            const { getSession } = await import('next-auth/react');
+            const session = await getSession();
+            if (session && session.user) {
+              const sUser = session.user as any;
+              localStorage.setItem('merchant_email', sUser.email || '');
+              localStorage.setItem('merchant_name', sUser.name || '');
+              storedEmail = sUser.email || null;
+              
+              if (sUser.businessId) {
+                localStorage.setItem('merchant_business_id', sUser.businessId);
+                storedBizId = sUser.businessId;
+              }
+              if (sUser.assignedCalendarIds) {
+                localStorage.setItem('assigned_calendar_ids', JSON.stringify(sUser.assignedCalendarIds));
+              }
+              window.dispatchEvent(new Event('storage'));
+            }
+          } catch (sessionErr) {
+            console.error('Failed to resolve NextAuth session on dashboard:', sessionErr);
+          }
+        }
+
+        // If still no businessId, look up by logged-in user email
         if (!storedBizId && storedEmail) {
           const res = await fetch(`/api/business?email=${storedEmail}`);
           const data = await res.json();
           if (data.success && data.business) {
             storedBizId = data.business._id;
             localStorage.setItem('merchant_business_id', data.business._id);
+            activeBiz = data.business;
+            setBusinessObj(data.business);
+            window.dispatchEvent(new Event('storage'));
+          } else {
+            // No business exists in DB either! Redirect to onboarding!
+            router.push('/merchant/onboarding');
+            return;
+          }
+        } else if (storedBizId) {
+          const res = await fetch(`/api/business?businessId=${storedBizId}`);
+          const data = await res.json();
+          if (data.success && data.business) {
+            activeBiz = data.business;
+            setBusinessObj(data.business);
           }
         }
 
-        if (!storedBizId) return;
+        if (!storedBizId) {
+          router.push('/login');
+          return;
+        }
 
         // Fetch calendars (locations)
         const calRes = await fetch(`/api/calendars?businessId=${storedBizId}`);
@@ -490,20 +536,22 @@ export default function MerchantDashboard() {
               </div>
 
               {/* Bank Holidays Card */}
-              <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-6 space-y-4">
-                <h3 className="font-bold text-base">Holiday Autopermission Sync</h3>
-                <div className="space-y-3.5">
-                  {holidays.map((holiday, i) => (
-                    <div key={i} className="flex justify-between items-start text-xs border-b border-outline-variant/10 pb-2 last:border-0 last:pb-0">
-                      <div>
-                        <h4 className="font-bold text-on-surface">{holiday.name}</h4>
-                        <span className="text-[10px] text-on-surface-variant font-medium">{holiday.type}</span>
+              {(!businessObj || businessObj.holidaySyncEnabled !== false) && (
+                <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-6 space-y-4">
+                  <h3 className="font-bold text-base">Holiday Autopermission Sync</h3>
+                  <div className="space-y-3.5">
+                    {holidays.map((holiday, i) => (
+                      <div key={i} className="flex justify-between items-start text-xs border-b border-outline-variant/10 pb-2 last:border-0 last:pb-0">
+                        <div>
+                          <h4 className="font-bold text-on-surface">{holiday.name}</h4>
+                          <span className="text-[10px] text-on-surface-variant font-medium">{holiday.type}</span>
+                        </div>
+                        <span className="font-bold text-on-surface-variant">{holiday.date}</span>
                       </div>
-                      <span className="font-bold text-on-surface-variant">{holiday.date}</span>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
             </div>
 

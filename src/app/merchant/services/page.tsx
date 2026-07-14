@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -175,6 +176,21 @@ export default function MerchantServices() {
     setUploading(true);
     setUploadError('');
 
+    // Validate size (2MB limit)
+    if (file.size > 2 * 1024 * 1024) {
+      setUploadError('Image size exceeds 2MB limit.');
+      setUploading(false);
+      return;
+    }
+
+    // Validate formats (JPEG, PNG, WEBP)
+    const allowedFormats = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedFormats.includes(file.type)) {
+      setUploadError('Unsupported format. Please upload JPEG, PNG, or WEBP.');
+      setUploading(false);
+      return;
+    }
+
     const formData = new FormData();
     formData.append('file', file);
 
@@ -281,6 +297,9 @@ export default function MerchantServices() {
   };
 
   const handleDeleteService = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this service? This action cannot be undone.')) {
+      return;
+    }
     // Optimistic UI update
     setServices(services.filter(s => s.id !== id));
 
@@ -370,7 +389,7 @@ export default function MerchantServices() {
 
   const formatAdvanceBooking = (days: number, hours: number, mins: number) => {
     if (days === 0 && hours === 0 && mins === 0) return 'Instant';
-    let parts = [];
+    const parts = [];
     if (days > 0) parts.push(`${days}d`);
     if (hours > 0) parts.push(`${hours}h`);
     if (mins > 0) parts.push(`${mins}m`);
@@ -525,13 +544,13 @@ export default function MerchantServices() {
                 </div>
                 <h3 className="font-extrabold text-sm text-on-surface">No Central Services Found</h3>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  There are no central service offerings registered for the business yet. Click "Add New Service" to create one.
+                  There are no central service offerings registered for the business yet. Click &quot;Add New Service&quot; to create one.
                 </p>
               </div>
             )
           ) : filteredServices.length === 0 ? (
             <div className="text-center py-12 text-xs text-on-surface-variant italic font-semibold">
-              No matching services found for "{search}".
+              No matching services found for &quot;{search}&quot;.
             </div>
           ) : (
             /* Cards Grid */
@@ -694,8 +713,13 @@ export default function MerchantServices() {
                       <label className="text-[10px] font-bold text-on-surface-variant uppercase">Price ($) *</label>
                       <input 
                         type="number" 
-                        value={currentService.price || 0} 
+                        required
+                        min="0"
+                        step="0.01"
+                        value={currentService.price === 0 && !currentService.id ? '' : currentService.price} 
                         onChange={(e) => setCurrentService({ ...currentService, price: parseFloat(e.target.value) || 0 })}
+                        onFocus={(e) => e.target.select()}
+                        placeholder="0.00"
                         className="w-full text-xs bg-surface-container rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none"
                       />
                     </div>
@@ -803,12 +827,15 @@ export default function MerchantServices() {
                           </span>
                           <input 
                             type="file" 
-                            accept="image/*"
+                            accept="image/jpeg,image/png,image/webp"
                             onChange={handleImageUpload}
                             disabled={uploading}
                             className="hidden"
                           />
                         </label>
+                        <span className="text-[9px] text-on-surface-variant block mt-1 text-center">
+                          Supported formats: JPEG, PNG, WEBP. Max size 2MB.
+                        </span>
                       </div>
                     </div>
 

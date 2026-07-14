@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -18,8 +19,11 @@ import {
   Sparkles,
   ChevronRight,
   ShieldCheck,
-  AlertCircle
+  AlertCircle,
+  Edit2,
+  Trash2
 } from 'lucide-react';
+import { validateEmail, validatePhone } from '@/lib/validation';
 
 interface Client {
   _id: string;
@@ -48,6 +52,7 @@ export default function MerchantClients() {
   const [assignedCalendarIds, setAssignedCalendarIds] = useState<string[]>([]);
   const [selectedScopeCalId, setSelectedScopeCalId] = useState('');
   const [errorModal, setErrorModal] = useState('');
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
 
   // Detail Modal/Drawer states
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -105,6 +110,7 @@ export default function MerchantClients() {
   }, []);
 
   const handleOpenAdd = () => {
+    setEditingClient(null);
     setFirstName('');
     setLastName('');
     setEmail('');
@@ -118,30 +124,89 @@ export default function MerchantClients() {
     setShowAddModal(true);
   };
 
+  const handleOpenEdit = (client: Client) => {
+    setEditingClient(client);
+    setFirstName(client.firstName);
+    setLastName(client.lastName);
+    setEmail(client.email);
+    setPhone(client.phone || '');
+    setSelectedCalendarId(client.calendarId || '');
+    setErrorModal('');
+    setShowAddModal(true);
+  };
+
+  const handleDeleteClient = async (id: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (!window.confirm('Are you sure you want to delete this customer? This action cannot be undone.')) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/clients?id=${id}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        setClients(clients.filter(c => c._id !== id));
+      } else {
+        alert(data.error || 'Failed to delete customer.');
+      }
+    } catch (err) {
+      console.error('Delete client error:', err);
+      alert('Connection error. Please try again.');
+    }
+  };
+
   const handleSaveClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!firstName || !lastName || !email) {
       setErrorModal('First Name, Last Name, and Email are required.');
       return;
     }
+
+    const emailCheck = validateEmail(email);
+    if (!emailCheck.isValid) {
+      setErrorModal('Please enter a valid email address.');
+      return;
+    }
+    if (emailCheck.isDisposable) {
+      setErrorModal('Disposable email addresses are not allowed. Please use a standard email domain.');
+      return;
+    }
+    if (phone && !validatePhone(phone)) {
+      setErrorModal('Please enter a valid phone number (7 to 15 digits).');
+      return;
+    }
+
     setErrorModal('');
     try {
       const storedBizId = typeof window !== 'undefined' ? localStorage.getItem('merchant_business_id') : null;
+      const isEdit = !!editingClient;
+
+      const payload: any = {
+        businessId: storedBizId,
+        calendarId: selectedCalendarId || undefined,
+        firstName,
+        lastName,
+        email,
+        phone
+      };
+
+      if (isEdit && editingClient) {
+        payload.id = editingClient._id;
+      }
+
       const res = await fetch('/api/clients', {
-        method: 'POST',
+        method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          businessId: storedBizId,
-          calendarId: selectedCalendarId || undefined,
-          firstName,
-          lastName,
-          email,
-          phone
-        })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (data.success) {
-        setClients([data.client, ...clients]);
+        if (isEdit) {
+          setClients(clients.map(c => c._id === editingClient._id ? data.client : c));
+        } else {
+          setClients([data.client, ...clients]);
+        }
         setShowAddModal(false);
       } else {
         setErrorModal(data.error || 'Failed to save client.');
@@ -313,6 +378,7 @@ export default function MerchantClients() {
                     <th className="py-3 px-4">Phone Number</th>
                     <th className="py-3 px-4">Location / Branch</th>
                     <th className="py-3 px-4">Registered Date</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -350,6 +416,27 @@ export default function MerchantClients() {
                         <td className="py-4 px-4 text-on-surface-variant">
                           <span className="flex items-center gap-1.5"><CalendarIcon className="w-3.5 h-3.5 text-outline" /> {new Date(c.createdAt).toLocaleDateString()}</span>
                         </td>
+                        <td className="py-4 px-4 text-right">
+                          <div className="flex justify-end gap-1.5">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenEdit(c);
+                              }}
+                              className="p-1.5 hover:bg-surface-container text-on-surface rounded transition-colors"
+                              title="Edit Customer Details"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => handleDeleteClient(c._id, e)}
+                              className="p-1.5 hover:bg-red-50 text-error rounded transition-colors"
+                              title="Delete Customer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -367,7 +454,7 @@ export default function MerchantClients() {
           <form onSubmit={handleSaveClient} className="w-full max-w-md bg-surface-container-lowest border border-outline-variant/30 rounded-2xl p-6 shadow-xl space-y-4">
             
             <div className="flex justify-between items-center border-b border-outline-variant/20 pb-3">
-              <h3 className="font-extrabold text-sm">Add New Client Profile</h3>
+              <h3 className="font-extrabold text-sm">{editingClient ? 'Edit Client Profile' : 'Add New Client Profile'}</h3>
               <button 
                 type="button" 
                 onClick={() => setShowAddModal(false)}

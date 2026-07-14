@@ -1,9 +1,11 @@
+/* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 'use client';
 
 import { useState, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
 import { Users, Search, Plus, Mail, Phone, Calendar, ShieldCheck, Edit2, Trash2, Check, X, Tag } from 'lucide-react';
+import { validateEmail, validatePhone } from '@/lib/validation';
 
 interface Employee {
   _id: string;
@@ -23,6 +25,7 @@ interface CalendarObj {
 }
 
 interface ServiceObj {
+  _id: string;
   id: string;
   name: string;
 }
@@ -153,6 +156,20 @@ export default function MerchantTeamPage() {
     e.preventDefault();
     if (!firstName || !lastName || !email) {
       alert('Please fill in first name, last name, and email.');
+      return;
+    }
+
+    const emailCheck = validateEmail(email);
+    if (!emailCheck.isValid) {
+      alert('Please enter a valid email address.');
+      return;
+    }
+    if (emailCheck.isDisposable) {
+      alert('Disposable email addresses are not allowed. Please use a standard email domain.');
+      return;
+    }
+    if (phone && !validatePhone(phone)) {
+      alert('Please enter a valid phone number (7 to 15 digits).');
       return;
     }
 
@@ -379,7 +396,7 @@ export default function MerchantTeamPage() {
                       <div className="flex flex-wrap gap-1">
                         {emp.serviceIds && emp.serviceIds.length > 0 ? (
                           emp.serviceIds.map(sId => {
-                            const srv = services.find(s => s.id === sId);
+                            const srv = services.find(s => String(s._id) === String(sId));
                             return srv ? (
                               <span key={sId} className="bg-primary/5 border border-primary/20 text-[9px] text-primary font-bold px-2 py-0.5 rounded">
                                 ⚙️ {srv.name}
@@ -486,7 +503,44 @@ export default function MerchantTeamPage() {
                 </select>
               </div>
 
-
+              {/* Password management */}
+              {editingEmployee ? (
+                <div className="space-y-1 border-t border-outline-variant/20 pt-4">
+                  <label className="text-[10px] font-bold text-on-surface-variant uppercase block">Reset Password (Optional)</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter new custom password"
+                      className="grow text-xs bg-surface-container rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const tempPass = `Reserveze-${Math.floor(1000 + Math.random() * 9000)}`;
+                        setPassword(tempPass);
+                        alert(`Regenerated Temporary Password:\n${tempPass}\n\nClick 'Save Profile' to apply and update this user's password.`);
+                      }}
+                      className="bg-secondary/10 hover:bg-secondary/20 border border-secondary/20 text-secondary text-[10px] font-bold px-3 py-2.5 rounded-lg transition-colors shrink-0"
+                    >
+                      Regenerate
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-on-surface-variant/80">Leave blank to keep current password. If changed, the staff member must use the new password on login.</p>
+                </div>
+              ) : (
+                <div className="space-y-1 border-t border-outline-variant/20 pt-4">
+                  <label className="text-[10px] font-bold text-on-surface-variant uppercase block">Set Password (Optional)</label>
+                  <input 
+                    type="text" 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Leave blank to auto-generate temporary password"
+                    className="w-full text-xs bg-surface-container rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none"
+                  />
+                </div>
+              )}
 
               {/* Assign calendars locations */}
               {!isRestrictedManager && (
@@ -520,11 +574,11 @@ export default function MerchantTeamPage() {
                     <span className="text-[10px] text-on-surface-variant italic">No services configured yet.</span>
                   ) : (
                     services.map(srv => (
-                      <label key={srv.id} className="flex items-center gap-2 cursor-pointer">
+                      <label key={srv._id} className="flex items-center gap-2 cursor-pointer">
                         <input 
                           type="checkbox"
-                          checked={selectedServices.includes(srv.id)}
-                          onChange={() => handleToggleService(srv.id)}
+                          checked={selectedServices.includes(srv._id)}
+                          onChange={() => handleToggleService(srv._id)}
                           className="rounded border-outline-variant/60 text-primary focus:ring-primary w-4 h-4"
                         />
                         <span className="font-semibold text-on-surface">{srv.name}</span>

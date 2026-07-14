@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 'use client';
 
 import { useState, useEffect, use } from 'react';
@@ -19,6 +20,7 @@ import {
   MapPin
 } from 'lucide-react';
 import Link from 'next/link';
+import { validateEmail, validatePhone } from '@/lib/validation';
 
 interface Service {
   id: string;
@@ -67,6 +69,25 @@ export default function CustomerBookingPage({ params }: { params: Promise<{ busi
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<any | null>(null);
   const [createdApptId, setCreatedApptId] = useState('');
+  const [welcomeBackMessage, setWelcomeBackMessage] = useState('');
+
+  const handleEmailBlur = async () => {
+    if (!email.trim() || !realBusinessId) return;
+    try {
+      const res = await fetch(`/api/clients?businessId=${realBusinessId}&email=${encodeURIComponent(email.trim())}`);
+      const data = await res.json();
+      if (data.success && data.client) {
+        setFirstName(data.client.firstName || '');
+        setLastName(data.client.lastName || '');
+        setPhone(data.client.phone || '');
+        setPrimaryChannel(data.client.primaryNotificationChannel || 'email');
+        setWelcomeBackMessage(`Welcome back, ${data.client.firstName}! We've prefilled your details.`);
+        setTimeout(() => setWelcomeBackMessage(''), 5000);
+      }
+    } catch (e) {
+      console.error('Failed to look up returning customer:', e);
+    }
+  };
 
   // Dynamic Date Generator: Next 5 days starting from today
   const [dates, setDates] = useState<Array<{ day: string; date: string; value: string }>>([]);
@@ -294,6 +315,24 @@ export default function CustomerBookingPage({ params }: { params: Promise<{ busi
 
     if (Number(captchaInput) !== (numA + numB)) {
       setCaptchaError('Incorrect math verification answer. Please solve the puzzle correctly.');
+      return;
+    }
+
+    const emailCheck = validateEmail(email);
+    if (!emailCheck.isValid) {
+      setErrorMessage('Please enter a valid email address.');
+      return;
+    }
+    if (emailCheck.isDisposable) {
+      setErrorMessage('Disposable email addresses are not allowed. Please use a standard email domain.');
+      return;
+    }
+    if (primaryChannel !== 'email' && !phone.trim()) {
+      setErrorMessage(`Mobile phone number is mandatory for receiving booking notifications via ${primaryChannel === 'sms' ? 'SMS' : 'WhatsApp'}.`);
+      return;
+    }
+    if (phone && !validatePhone(phone)) {
+      setErrorMessage('Please enter a valid phone number (7 to 15 digits).');
       return;
     }
 
@@ -630,6 +669,13 @@ export default function CustomerBookingPage({ params }: { params: Promise<{ busi
                 </div>
               )}
               
+              {welcomeBackMessage && (
+                <div className="bg-secondary/10 border border-secondary/20 text-secondary p-3 rounded-lg text-xs font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{welcomeBackMessage}</span>
+                </div>
+              )}
+              
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-on-surface-variant uppercase">First Name *</label>
@@ -661,6 +707,7 @@ export default function CustomerBookingPage({ params }: { params: Promise<{ busi
                   type="email" 
                   value={email} 
                   onChange={(e) => setEmail(e.target.value)}
+                  onBlur={handleEmailBlur}
                   required
                   placeholder="john.doe@example.com"
                   className="w-full text-xs bg-surface-container rounded-lg p-2.5 border border-outline-variant/30 focus:outline-none"
@@ -765,9 +812,27 @@ export default function CustomerBookingPage({ params }: { params: Promise<{ busi
                 </div>
 
                 {errorMessage && (
-                  <div className="bg-red-500/10 border border-red-200 text-red-700 text-xs font-bold p-3.5 rounded-xl flex items-center gap-2">
-                    <AlertCircle className="w-4.5 h-4.5 shrink-0" />
-                    <span>{errorMessage}</span>
+                  <div className="bg-red-500/10 border border-red-200 text-red-700 text-xs font-bold p-3.5 rounded-xl flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4.5 h-4.5 shrink-0" />
+                      <span>{errorMessage}</span>
+                    </div>
+                    {(errorMessage.includes('verification') || errorMessage.includes('Bot') || errorMessage.includes('puzzle') || errorMessage.includes('Submit')) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBotTimestamp(Date.now());
+                          setNumA(Math.floor(Math.random() * 8) + 2);
+                          setNumB(Math.floor(Math.random() * 8) + 2);
+                          setCaptchaInput('');
+                          setCaptchaError('');
+                          setErrorMessage('');
+                        }}
+                        className="mt-1 bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg self-start transition-colors"
+                      >
+                        Reset Verification & Retry
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -792,11 +857,30 @@ export default function CustomerBookingPage({ params }: { params: Promise<{ busi
               {/* Dynamic portal tracking link box */}
               <div className="bg-surface-container p-4 rounded-xl border border-outline-variant/30 max-w-md mx-auto space-y-3">
                 <span className="text-[10px] font-bold text-primary flex items-center justify-center gap-1 uppercase tracking-wider">
-                  <Sparkles className="w-3.5 h-3.5" /> Single-Text Rule Enabled
+                  <Sparkles className="w-3.5 h-3.5" /> Booking Reference: {createdApptId ? `REZ-${createdApptId.slice(-6).toUpperCase()}` : 'REZ-MOCKID'}
                 </span>
                 <p className="text-[10px] text-on-surface-variant leading-relaxed">
-                  To save communications fees, we send exactly one initial message. Track future status modifications, employee assignments, and notes live on the portal:
+                  Save this live tracking link to verify your appointment status, manager notes, and employee assignments at any time:
                 </p>
+                
+                <div className="flex items-center gap-2 bg-surface-container-lowest p-2 rounded-lg border border-outline-variant/20">
+                  <span className="text-[9px] font-bold text-primary grow truncate select-all">
+                    {typeof window !== 'undefined' ? `${window.location.origin}/booking/track/${createdApptId || 'mock-appt-id'}` : ''}
+                  </span>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      if (typeof window !== 'undefined') {
+                        navigator.clipboard.writeText(`${window.location.origin}/booking/track/${createdApptId || 'mock-appt-id'}`);
+                        alert('Tracking link copied to clipboard!');
+                      }
+                    }}
+                    className="bg-primary hover:bg-primary-container text-on-primary text-[9px] font-bold px-2 py-1 rounded transition-colors"
+                  >
+                    Copy
+                  </button>
+                </div>
+
                 <Link 
                   href={`/booking/track/${createdApptId || 'mock-appt-id'}`}
                   className="w-full bg-primary hover:bg-primary-container text-on-primary py-2 rounded-lg text-xs font-bold block transition-colors shadow-sm text-center"

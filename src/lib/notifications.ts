@@ -124,7 +124,7 @@ export async function triggerTransactionalNotification(
 
   // Determine Channel based on single channel preference architecture
   const primaryChannel = appointment.primaryChannel || 'email';
-  let targetChannel = primaryChannel;
+  const targetChannel = primaryChannel;
   let textContent = '';
 
   // Setup template content

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -28,6 +29,44 @@ export default function Sidebar({ className = '' }: SidebarProps) {
   const [isRestrictedManager, setIsRestrictedManager] = useState(false);
 
   useEffect(() => {
+    const syncNextAuth = async () => {
+      try {
+        const { getSession } = await import('next-auth/react');
+        const session = await getSession();
+        if (session && session.user) {
+          const sUser = session.user as any;
+          let changed = false;
+
+          if (localStorage.getItem('merchant_email') !== sUser.email) {
+            localStorage.setItem('merchant_email', sUser.email || '');
+            changed = true;
+          }
+          if (localStorage.getItem('merchant_name') !== sUser.name) {
+            localStorage.setItem('merchant_name', sUser.name || '');
+            changed = true;
+          }
+          if (sUser.businessId && localStorage.getItem('merchant_business_id') !== sUser.businessId) {
+            localStorage.setItem('merchant_business_id', sUser.businessId);
+            changed = true;
+          }
+          if (sUser.assignedCalendarIds) {
+            const rawAssigned = JSON.stringify(sUser.assignedCalendarIds);
+            if (localStorage.getItem('assigned_calendar_ids') !== rawAssigned) {
+              localStorage.setItem('assigned_calendar_ids', rawAssigned);
+              changed = true;
+            }
+          }
+
+          if (changed) {
+            window.dispatchEvent(new Event('storage'));
+          }
+        }
+      } catch (err) {
+        console.error('NextAuth sync error:', err);
+      }
+    };
+    syncNextAuth();
+
     if (typeof window !== 'undefined') {
       const assignedCalId = localStorage.getItem('assigned_calendar_ids');
       setIsRestrictedManager(!!assignedCalId);

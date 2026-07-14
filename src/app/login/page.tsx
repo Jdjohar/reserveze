@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Mail, 
@@ -14,10 +14,30 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import Link from 'next/link';
+import { signIn } from 'next-auth/react';
 
 export default function LoginPage() {
   const router = useRouter();
   const [isLogin, setIsLogin] = useState(true); // Toggle login vs signup
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('merchant_email');
+      localStorage.removeItem('merchant_name');
+      localStorage.removeItem('merchant_business_id');
+      localStorage.removeItem('assigned_calendar_ids');
+      localStorage.removeItem('needs_password_change');
+      
+      const cleanNextAuth = async () => {
+        try {
+          const { signOut } = await import('next-auth/react');
+          await signOut({ redirect: false });
+        } catch (err) {}
+      };
+      cleanNextAuth();
+    }
+  }, []);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -130,17 +150,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleSocialAuth = (provider: 'Google' | 'Apple' | 'Facebook') => {
-    setLoading(true);
-    setError('');
-    setTimeout(() => {
-      setLoading(false);
-      setMessage(`Successfully authenticated with ${provider}!`);
-      setTimeout(() => {
-        router.push('/merchant/dashboard');
-      }, 1000);
-    }, 1200);
-  };
 
   return (
     <div className="min-h-screen bg-surface-container-low text-on-surface flex items-center justify-center p-4">
@@ -180,7 +189,7 @@ export default function LoginPage() {
               {/* Google */}
               <button 
                 type="button"
-                onClick={() => handleSocialAuth('Google')}
+                onClick={() => signIn('google', { callbackUrl: '/merchant/dashboard' })}
                 className="flex items-center justify-center gap-1.5 border border-outline-variant/30 hover:bg-surface-container rounded-lg py-2.5 text-[10px] font-bold transition-colors"
               >
                 {/* SVG Google logo */}
@@ -196,7 +205,7 @@ export default function LoginPage() {
               {/* Apple */}
               <button 
                 type="button"
-                onClick={() => handleSocialAuth('Apple')}
+                onClick={() => signIn('apple', { callbackUrl: '/merchant/dashboard' })}
                 className="flex items-center justify-center gap-1.5 border border-outline-variant/30 hover:bg-surface-container rounded-lg py-2.5 text-[10px] font-bold transition-colors"
               >
                 {/* SVG Apple logo */}
@@ -209,7 +218,7 @@ export default function LoginPage() {
               {/* Facebook */}
               <button 
                 type="button"
-                onClick={() => handleSocialAuth('Facebook')}
+                onClick={() => signIn('facebook', { callbackUrl: '/merchant/dashboard' })}
                 className="flex items-center justify-center gap-1.5 border border-outline-variant/30 hover:bg-surface-container rounded-lg py-2.5 text-[10px] font-bold transition-colors"
               >
                 {/* SVG Facebook logo */}
@@ -224,7 +233,7 @@ export default function LoginPage() {
           {/* Divider */}
           <div className="relative flex py-2 items-center">
             <div className="flex-grow border-t border-outline-variant/20"></div>
-            <span className="flex-shrink mx-4 text-[9px] font-bold text-on-surface-variant uppercase">Or use email credential</span>
+            <span className="flex-shrink mx-4 text-[9px] font-bold text-on-surface-variant uppercase">Or use credentials</span>
             <div className="flex-grow border-t border-outline-variant/20"></div>
           </div>
 
@@ -351,34 +360,33 @@ export default function LoginPage() {
 
           </form>
 
-          {/* Sandbox creds alert box */}
-          <div className="bg-surface-container p-4 rounded-xl border border-outline-variant/30 space-y-1.5 text-[10px] text-on-surface-variant leading-relaxed">
-            <span className="font-bold text-primary flex items-center gap-1 uppercase tracking-wider">
-              <Sparkles className="w-3.5 h-3.5" /> Sandbox Authentication
-            </span>
-            <p>
-              OAuth channels (Google & Apple) are fully simulated. If using credential fields, enter any email and password combination.
-            </p>
-          </div>
 
         </div>
 
         {/* Footer switch state link */}
-        <div className="bg-surface-container p-4 border-t border-outline-variant/30 text-center text-xs">
-          <span className="text-on-surface-variant">
-            {isLogin ? "New to Reserveze? " : "Already have an account? "}
-          </span>
-          <button 
-            type="button"
-            onClick={() => {
-              setIsLogin(!isLogin);
-              setError('');
-              setMessage('');
-            }}
-            className="font-bold text-primary hover:underline"
-          >
-            {isLogin ? "Sign Up" : "Sign In"}
-          </button>
+        <div className="bg-surface-container p-4 border-t border-outline-variant/30 text-center text-xs space-y-2">
+          <div>
+            <span className="text-on-surface-variant">
+              {isLogin ? "New to Reserveze? " : "Already have an account? "}
+            </span>
+            <button 
+              type="button"
+              onClick={() => {
+                setIsLogin(!isLogin);
+                setError('');
+                setMessage('');
+              }}
+              className="font-bold text-primary hover:underline"
+            >
+              {isLogin ? "Sign Up" : "Sign In"}
+            </button>
+          </div>
+          {isLogin && (
+            <div className="text-[10px] text-on-surface-variant/80 border-t border-outline-variant/10 pt-2 flex items-center justify-center gap-1">
+              <span>Are you a staff member?</span>
+              <span className="font-bold text-primary">Team login uses the same credentials form.</span>
+            </div>
+          )}
         </div>
 
       </div>

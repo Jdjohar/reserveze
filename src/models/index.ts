@@ -39,6 +39,7 @@ export interface IBusiness extends Document {
   };
   smsCreditsUsed: number;
   smsCreditsCap: number;
+  holidaySyncEnabled?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -61,7 +62,8 @@ const BusinessSchema = new Schema<IBusiness>({
     whatsapp: { type: Boolean, default: false }
   },
   smsCreditsUsed: { type: Number, default: 0 },
-  smsCreditsCap: { type: Number, default: 100 } // Free Tier standard cap
+  smsCreditsCap: { type: Number, default: 100 }, // Free Tier standard cap
+  holidaySyncEnabled: { type: Boolean, default: true }
 }, { timestamps: true });
 
 // Calendar Schema

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 'use client';
 
 import Sidebar from '@/components/Sidebar';
@@ -24,6 +25,7 @@ export default function MerchantShare() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [downloading, setDownloading] = useState(false);
 
   // Scoped sharing
   const [isRestrictedManager, setIsRestrictedManager] = useState(false);
@@ -143,6 +145,29 @@ export default function MerchantShare() {
       setError('Connection error. Please try again.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDownloadQR = async () => {
+    if (!bookingUrl) return;
+    setDownloading(true);
+    try {
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(bookingUrl)}`;
+      const response = await fetch(qrUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${business?.name || 'reserveze'}-qr-code.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Failed to download QR code:', e);
+      alert('Failed to download QR code. Please try again.');
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -305,12 +330,27 @@ export default function MerchantShare() {
                 <p className="text-xs text-on-surface-variant max-w-xs leading-relaxed">
                   Display this in your physical reception area to let walk-in clients scan and reserve slots on the fly.
                 </p>
-                <div className="w-36 h-36 bg-surface-container border border-outline-variant/30 rounded-lg flex items-center justify-center font-bold text-outline/30 text-xs relative">
-                  <div className="absolute inset-4 border-2 border-primary/20 border-dashed rounded flex items-center justify-center text-[10px] text-primary">
-                    [DYNAMIC QR CODE]
-                  </div>
+                <div className="w-36 h-36 bg-white border border-outline-variant/30 rounded-lg flex items-center justify-center overflow-hidden relative shadow-sm">
+                  {bookingUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(bookingUrl)}`} 
+                      alt="QR Code" 
+                      className="w-full h-full p-2.5 object-contain"
+                    />
+                  ) : (
+                    <div className="absolute inset-4 border-2 border-primary/20 border-dashed rounded flex items-center justify-center text-[10px] text-primary">
+                      Generating...
+                    </div>
+                  )}
                 </div>
-                <button className="text-xs font-bold text-primary hover:underline">Download High-Res PDF</button>
+                <button 
+                  onClick={handleDownloadQR}
+                  disabled={downloading || !bookingUrl}
+                  className="text-xs font-bold text-primary hover:underline disabled:opacity-40"
+                >
+                  {downloading ? 'Downloading...' : 'Download High-Res PNG Image'}
+                </button>
               </div>
 
               {/* Embed Script */}

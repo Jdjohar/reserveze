@@ -33,6 +33,13 @@ export async function GET(req: NextRequest) {
     }
 
     if (!business) {
+      business = await Business.findOne({ slug: 'jdwebservices' });
+      if (!business) {
+        business = await Business.findOne({});
+      }
+    }
+
+    if (!business) {
       return NextResponse.json({ success: false, error: 'Business workspace not found' }, { status: 404 });
     }
 
@@ -47,7 +54,7 @@ export async function PUT(req: NextRequest) {
   try {
     await connectToDatabase();
     const body = await req.json();
-    const { businessId, slug, name, phone, whatsapp, email, logoUrl, address, plan, buyCredits, price } = body;
+    const { businessId, slug, name, phone, whatsapp, email, logoUrl, address, plan, buyCredits, price, holidaySyncEnabled } = body;
 
     const id = businessId || DEMO_BUSINESS_ID.toString();
 
@@ -79,6 +86,9 @@ export async function PUT(req: NextRequest) {
     if (plan !== undefined) {
       updateData.plan = plan;
       updateData.smsCreditsCap = plan === 'PRO' ? 500 : 100;
+    }
+    if (holidaySyncEnabled !== undefined) {
+      updateData.holidaySyncEnabled = holidaySyncEnabled;
     }
 
     const updateQuery: any = { $set: updateData };

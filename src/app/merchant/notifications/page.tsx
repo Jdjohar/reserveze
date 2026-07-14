@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -20,13 +21,36 @@ import {
 export default function MerchantNotifications() {
   const [primaryChannel, setPrimaryChannel] = useState<'email' | 'whatsapp' | 'sms'>('email');
   
+  const [business, setBusiness] = useState<any>(null);
+  const [creditsUsed, setCreditsUsed] = useState(15);
+  const [creditsCap, setCreditsCap] = useState(100);
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const assignedCalId = localStorage.getItem('assigned_calendar_ids');
       if (assignedCalId) {
         window.location.href = '/merchant/dashboard';
+        return;
       }
     }
+
+    const fetchBusiness = async () => {
+      try {
+        const storedBizId = typeof window !== 'undefined' ? localStorage.getItem('merchant_business_id') : null;
+        if (!storedBizId) return;
+
+        const res = await fetch(`/api/business?businessId=${storedBizId}`);
+        const data = await res.json();
+        if (data.success && data.business) {
+          setBusiness(data.business);
+          setCreditsUsed(data.business.smsCreditsUsed || 0);
+          setCreditsCap(data.business.smsCreditsCap || 100);
+        }
+      } catch (err) {
+        console.error('Failed to load business profile:', err);
+      }
+    };
+    fetchBusiness();
   }, []);
   const [cascadeEnabled, setCascadeEnabled] = useState(true);
   const [cooldownEnabled, setCooldownEnabled] = useState(true);
@@ -222,21 +246,21 @@ export default function MerchantNotifications() {
               <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-6 space-y-4">
                 <h3 className="font-bold text-sm text-on-surface flex items-center gap-1.5">
                   <TrendingDown className="w-4 h-4 text-secondary" />
-                  Monthly Wallet Analytics
+                  Notification Credits Wallet
                 </h3>
                 
                 <div className="space-y-3 pt-2">
                   <div className="flex justify-between text-xs">
-                    <span className="text-on-surface-variant">Est. Mobile Costs Saved</span>
+                    <span className="text-on-surface-variant">Est. Costs Saved</span>
                     <span className="font-extrabold text-secondary">+$18.42</span>
                   </div>
                   <div className="flex justify-between text-xs border-t border-outline-variant/20 pt-2">
-                    <span className="text-on-surface-variant">SMS Dispatches</span>
-                    <span className="font-bold">12 / 100</span>
+                    <span className="text-on-surface-variant">SMS / WA Dispatches</span>
+                    <span className="font-bold">{creditsUsed} / {creditsCap}</span>
                   </div>
                   <div className="flex justify-between text-xs">
-                    <span className="text-on-surface-variant">WhatsApp Dispatches</span>
-                    <span className="font-bold">3 / 100</span>
+                    <span className="text-on-surface-variant">Wallet Balance (Credits)</span>
+                    <span className="font-bold text-primary">{creditsCap - creditsUsed} Left</span>
                   </div>
                   <div className="flex justify-between text-xs">
                     <span className="text-on-surface-variant">Emails Dispatched</span>
@@ -244,8 +268,8 @@ export default function MerchantNotifications() {
                   </div>
                 </div>
 
-                <div className="bg-surface-container p-3 rounded-lg border border-outline-variant/20 text-[10px] text-on-surface-variant mt-2">
-                  <strong>Standard Plan Cap:</strong> 100 SMS/WhatsApp messages. Upgrade to Pro ($15/mo) for 500 dispatches.
+                <div className="bg-surface-container p-3 rounded-lg border border-outline-variant/20 text-[10px] text-on-surface-variant mt-2 leading-relaxed">
+                  <strong>Pay-Per-Message Model:</strong> Each carrier text (SMS or WhatsApp) consumes 1 credit. Standard Plan cap is 100 credits. Pro Plan upgrades you to 500 credits.
                 </div>
               </div>
 

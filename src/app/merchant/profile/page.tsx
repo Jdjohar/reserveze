@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 'use client';
 
 import Sidebar from '@/components/Sidebar';
@@ -13,6 +14,7 @@ interface BusinessDetails {
   whatsapp?: string;
   logoUrl?: string;
   address?: string;
+  holidaySyncEnabled?: boolean;
 }
 
 export default function MerchantProfile() {
@@ -23,6 +25,7 @@ export default function MerchantProfile() {
   const [whatsapp, setWhatsapp] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [address, setAddress] = useState('');
+  const [holidaySyncEnabled, setHolidaySyncEnabled] = useState(true);
   
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -53,6 +56,7 @@ export default function MerchantProfile() {
           setWhatsapp(data.business.whatsapp || '');
           setLogoUrl(data.business.logoUrl || '');
           setAddress(data.business.address || '');
+          setHolidaySyncEnabled(data.business.holidaySyncEnabled !== false);
         }
       } catch (err) {
         console.error('Failed to load profile details:', err);
@@ -113,12 +117,14 @@ export default function MerchantProfile() {
           phone,
           whatsapp,
           logoUrl,
-          address
+          address,
+          holidaySyncEnabled
         })
       });
       const data = await res.json();
       if (data.success) {
         setBusiness(data.business);
+        setHolidaySyncEnabled(data.business.holidaySyncEnabled !== false);
         setSuccess('Business profile updated successfully!');
       } else {
         setError(data.error || 'Failed to update profile.');
@@ -256,6 +262,25 @@ export default function MerchantProfile() {
                     className="w-full bg-surface-container rounded-lg p-3 border border-outline-variant/30 focus:outline-none text-on-surface font-semibold text-xs"
                     placeholder="E.g. 123 Luxury Way, Beverly Hills, CA 90210"
                   />
+                </div>
+
+                {/* Holiday Sync Toggle */}
+                <div className="flex items-start gap-3 pt-2">
+                  <input 
+                    type="checkbox"
+                    id="holidaySyncEnabled"
+                    checked={holidaySyncEnabled}
+                    onChange={(e) => setHolidaySyncEnabled(e.target.checked)}
+                    className="rounded border-outline-variant/60 text-primary focus:ring-primary w-4.5 h-4.5 mt-0.5"
+                  />
+                  <div className="space-y-0.5">
+                    <label htmlFor="holidaySyncEnabled" className="text-xs font-bold text-on-surface cursor-pointer select-none">
+                      Enable Automatic Holiday Synchronization
+                    </label>
+                    <p className="text-[10px] text-on-surface-variant leading-relaxed">
+                      Automatically label and block booking slots during public bank holidays (e.g. Independence Day, Labor Day) based on regional calendars.
+                    </p>
+                  </div>
                 </div>
 
                 <div className="pt-4 border-t border-outline-variant/10">

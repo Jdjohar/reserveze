@@ -64,8 +64,8 @@ export async function POST(req: NextRequest) {
     // 1. Anti-Bot checks
     if (botTimestamp) {
       const timeElapsed = Date.now() - Number(botTimestamp);
-      if (timeElapsed < 2500) {
-        return NextResponse.json({ success: false, error: 'Verification error: booking submitted too quickly (bot activity suspected).' }, { status: 400 });
+      if (timeElapsed < 1500) {
+        return NextResponse.json({ success: false, error: 'Verification error: booking submitted too quickly (bot activity suspected). Please retry.' }, { status: 400 });
       }
     }
 
@@ -148,6 +148,7 @@ export async function POST(req: NextRequest) {
                 <p style="margin: 5px 0;"><strong>Service:</strong> ${service ? service.name : 'Standard Appointment'}</p>
                 <p style="margin: 5px 0;"><strong>Date & Time:</strong> ${clientDateStr}</p>
                 <p style="margin: 5px 0;"><strong>Location:</strong> ${calendar.name}</p>
+                <p style="margin: 5px 0;"><strong>Booking Reference:</strong> REZ-${newAppointment._id.toString().slice(-6).toUpperCase()}</p>
                 <p style="margin: 5px 0;"><strong>Status:</strong> <span style="background-color: #fff9c4; color: #f57f17; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; text-transform: uppercase;">PENDING CONFIRMATION</span></p>
               </div>
 
@@ -187,6 +188,7 @@ export async function POST(req: NextRequest) {
                 <p style="margin: 5px 0;"><strong>Requested Service:</strong> ${service ? service.name : 'Standard Appointment'}</p>
                 <p style="margin: 5px 0;"><strong>Scheduled Time:</strong> ${adminDateStr}</p>
                 <p style="margin: 5px 0;"><strong>Target Workspace:</strong> ${calendar.name}</p>
+                <p style="margin: 5px 0;"><strong>Booking Reference:</strong> REZ-${newAppointment._id.toString().slice(-6).toUpperCase()}</p>
               </div>
 
               <p>To approve, cancel, or edit this appointment slot, please visit your merchant administrative calendar:</p>

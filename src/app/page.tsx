@@ -143,6 +143,12 @@ export default function Home() {
                 Go to Merchant Dashboard
               </Link>
               <Link 
+                href="/login" 
+                className="w-full bg-secondary/15 hover:bg-secondary/25 border border-secondary/30 text-secondary py-2 rounded-lg text-xs font-bold text-center block transition-colors"
+              >
+                Team Member / Staff Login
+              </Link>
+              <Link 
                 href="/merchant/calendar" 
                 className="w-full border border-outline-variant/40 hover:bg-surface-container-low text-on-surface py-2.5 rounded-lg text-sm font-semibold text-center block transition-colors"
               >
@@ -233,7 +239,7 @@ export default function Home() {
                   <CheckIcon className="w-3.5 h-3.5" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm">The "Single-Text" Tracking Portal</h4>
+                  <h4 className="font-bold text-sm">The &quot;Single-Text&quot; Tracking Portal</h4>
                   <p className="text-xs text-on-surface-variant">Instead of texting on every status update, a single text sends a dynamic web portal link where clients track progress live.</p>
                 </div>
               </li>
@@ -279,7 +285,7 @@ export default function Home() {
                 <div className="w-12 h-12 rounded-full bg-surface-container-high border border-outline-variant/40 flex items-center justify-center font-bold text-xs">Check</div>
                 <div className="bg-surface-container p-3 rounded-lg border border-outline-variant/30 flex-1">
                   <span className="text-xs font-bold text-on-surface block">Step 2: Monitoring State</span>
-                  <p className="text-xs text-on-surface-variant mt-1">Waiting for customer to click "Confirm Appointment" on tracking web app.</p>
+                  <p className="text-xs text-on-surface-variant mt-1">Waiting for customer to click &quot;Confirm Appointment&quot; on tracking web app.</p>
                 </div>
               </div>
 
