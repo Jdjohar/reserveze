@@ -281,6 +281,37 @@ const TransactionSchema = new Schema<ITransaction>({
   status: { type: String, enum: ['PAID', 'FAILED'], default: 'PAID' }
 }, { timestamps: true });
 
+// Waitlist Schema
+export interface IWaitlist extends Document {
+  name: string;
+  email: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const WaitlistSchema = new Schema<IWaitlist>({
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true, index: true }
+}, { timestamps: true });
+
+// OTP Verification Schema
+export interface IOtpVerification extends Document {
+  email: string;
+  code: string;
+  expiresAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const OtpVerificationSchema = new Schema<IOtpVerification>({
+  email: { type: String, required: true, index: true },
+  code: { type: String, required: true },
+  expiresAt: { type: Date, required: true }
+}, { timestamps: true });
+
+// Create TTL index (auto-expire documents when current time reaches expiresAt)
+OtpVerificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
 // Compiles and exports models, checks for existing compilations in Next.js dev server.
 if (process.env.NODE_ENV !== 'production') {
   delete mongoose.models.User;
@@ -293,6 +324,8 @@ if (process.env.NODE_ENV !== 'production') {
   delete mongoose.models.BlockedTime;
   delete mongoose.models.Employee;
   delete mongoose.models.Transaction;
+  delete mongoose.models.Waitlist;
+  delete mongoose.models.OtpVerification;
 }
 
 export const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
@@ -305,3 +338,5 @@ export const Appointment: Model<IAppointment> = mongoose.models.Appointment || m
 export const BlockedTime: Model<IBlockedTime> = mongoose.models.BlockedTime || mongoose.model<IBlockedTime>('BlockedTime', BlockedTimeSchema);
 export const Employee: Model<IEmployee> = mongoose.models.Employee || mongoose.model<IEmployee>('Employee', EmployeeSchema);
 export const Transaction: Model<ITransaction> = mongoose.models.Transaction || mongoose.model<ITransaction>('Transaction', TransactionSchema);
+export const Waitlist: Model<IWaitlist> = mongoose.models.Waitlist || mongoose.model<IWaitlist>('Waitlist', WaitlistSchema);
+export const OtpVerification: Model<IOtpVerification> = mongoose.models.OtpVerification || mongoose.model<IOtpVerification>('OtpVerification', OtpVerificationSchema);

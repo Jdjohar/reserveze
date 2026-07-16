@@ -11,7 +11,8 @@ import {
   Sparkles,
   Info,
   Building,
-  CheckCircle2
+  CheckCircle2,
+  ShieldCheck
 } from 'lucide-react';
 import Link from 'next/link';
 import { signIn } from 'next-auth/react';
@@ -19,6 +20,8 @@ import { signIn } from 'next-auth/react';
 export default function LoginPage() {
   const router = useRouter();
   const [isLogin, setIsLogin] = useState(true); // Toggle login vs signup
+  const [showOtpScreen, setShowOtpScreen] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -115,37 +118,68 @@ export default function LoginPage() {
         setError('Passwords do not match.');
         return;
       }
-      setLoading(true);
-      try {
-        const res = await fetch('/api/auth', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'signup',
-            email,
-            password,
-            name,
-            businessName
-          })
-        });
-        const data = await res.json();
-        setLoading(false);
-        if (data.success) {
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('merchant_email', data.user.email);
-            localStorage.setItem('merchant_name', data.user.name);
-            localStorage.removeItem('merchant_business_id');
-          }
-          setMessage('Account registered successfully! Logging you in...');
-          setTimeout(() => {
-            router.push('/merchant/onboarding');
-          }, 1200);
-        } else {
-          setError(data.error || 'Failed to register account.');
+
+      if (showOtpScreen) {
+        if (!otpCode) {
+          setError('Please enter the 6-digit verification code.');
+          return;
         }
-      } catch (err) {
-        setLoading(false);
-        setError('Connection error. Please try again.');
+        setLoading(true);
+        try {
+          const res = await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'signup',
+              email,
+              password,
+              name,
+              businessName,
+              otpCode
+            })
+          });
+          const data = await res.json();
+          setLoading(false);
+          if (data.success) {
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('merchant_email', data.user.email);
+              localStorage.setItem('merchant_name', data.user.name);
+              localStorage.removeItem('merchant_business_id');
+            }
+            setMessage('Account verified and created successfully! Redirecting...');
+            setTimeout(() => {
+              router.push('/merchant/onboarding');
+            }, 1200);
+          } else {
+            setError(data.error || 'Failed to verify OTP code.');
+          }
+        } catch (err) {
+          setLoading(false);
+          setError('Connection error. Please try again.');
+        }
+      } else {
+        setLoading(true);
+        try {
+          const res = await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'send-signup-otp',
+              email
+            })
+          });
+          const data = await res.json();
+          setLoading(false);
+          if (data.success) {
+            setShowOtpScreen(true);
+            setMessage('A 6-digit verification code has been sent to your email. Enter it below to register.');
+          } else {
+            setError(data.error || 'Failed to send verification code.');
+          }
+        } catch (err) {
+          setLoading(false);
+          setError('Connection error. Please try again.');
+        }
       }
     }
   };
@@ -239,107 +273,146 @@ export default function LoginPage() {
 
           <form onSubmit={handleAuth} className="space-y-4">
             
-            {/* Full Name (Signup only) */}
-            {!isLogin && (
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-on-surface-variant uppercase">Full Name *</label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
-                    <User className="w-4 h-4" />
-                  </span>
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Alex Mercer"
-                    className="w-full text-xs bg-surface-container rounded-lg pl-9 pr-4 py-2.5 border border-outline-variant/30 focus:outline-none"
-                  />
+            {/* If OTP screen is active */}
+            {!isLogin && showOtpScreen ? (
+              <div className="space-y-4 animate-in fade-in duration-300">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">Email Verification Code *</label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
+                      <ShieldCheck className="w-4 h-4" />
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value)}
+                      placeholder="Enter 6-digit OTP code"
+                      maxLength={6}
+                      className="w-full text-center tracking-widest text-sm font-extrabold bg-surface-container rounded-lg pl-9 pr-4 py-3 border border-outline-variant/30 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowOtpScreen(false);
+                      setError('');
+                      setMessage('');
+                    }}
+                    className="text-[10px] font-bold text-primary hover:underline"
+                  >
+                    ← Edit Details / Go Back
+                  </button>
                 </div>
               </div>
-            )}
-
-            {/* Business Name (Signup only) */}
-            {!isLogin && (
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-on-surface-variant uppercase">Business Name *</label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
-                    <Building className="w-4 h-4" />
-                  </span>
-                  <input
-                    type="text"
-                    required
-                    value={businessName}
-                    onChange={(e) => setBusinessName(e.target.value)}
-                    placeholder="Vanguard Wellness Salon"
-                    className="w-full text-xs bg-surface-container rounded-lg pl-9 pr-4 py-2.5 border border-outline-variant/30 focus:outline-none"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Email */}
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-on-surface-variant uppercase">Email Address *</label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
-                  <Mail className="w-4 h-4" />
-                </span>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="alex@business.com"
-                  className="w-full text-xs bg-surface-container rounded-lg pl-9 pr-4 py-2.5 border border-outline-variant/30 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div className="space-y-1">
-              <div className="flex justify-between items-center">
-                <label className="text-[10px] font-bold text-on-surface-variant uppercase">Password *</label>
-                {isLogin && (
-                  <Link href="/forgot-password" className="text-[10px] font-bold text-primary hover:underline">
-                    Forgot password?
-                  </Link>
+            ) : (
+              <>
+                {/* Full Name (Signup only) */}
+                {!isLogin && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-on-surface-variant uppercase">Full Name *</label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
+                        <User className="w-4 h-4" />
+                      </span>
+                      <input
+                        type="text"
+                        required
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Alex Mercer"
+                        className="w-full text-xs bg-surface-container rounded-lg pl-9 pr-4 py-2.5 border border-outline-variant/30 focus:outline-none"
+                      />
+                    </div>
+                  </div>
                 )}
-              </div>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
-                  <Lock className="w-4 h-4" />
-                </span>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full text-xs bg-surface-container rounded-lg pl-9 pr-4 py-2.5 border border-outline-variant/30 focus:outline-none"
-                />
-              </div>
-            </div>
 
-            {/* Confirm Password (Signup only) */}
-            {!isLogin && (
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-on-surface-variant uppercase">Confirm Password *</label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
-                    <Lock className="w-4 h-4" />
-                  </span>
-                  <input
-                    type="password"
-                    required
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full text-xs bg-surface-container rounded-lg pl-9 pr-4 py-2.5 border border-outline-variant/30 focus:outline-none"
-                  />
+                {/* Business Name (Signup only) */}
+                {!isLogin && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-on-surface-variant uppercase">Business Name *</label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
+                        <Building className="w-4 h-4" />
+                      </span>
+                      <input
+                        type="text"
+                        required
+                        value={businessName}
+                        onChange={(e) => setBusinessName(e.target.value)}
+                        placeholder="Vanguard Wellness Salon"
+                        className="w-full text-xs bg-surface-container rounded-lg pl-9 pr-4 py-2.5 border border-outline-variant/30 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Email */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-on-surface-variant uppercase">Email Address *</label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
+                      <Mail className="w-4 h-4" />
+                    </span>
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="alex@business.com"
+                      className="w-full text-xs bg-surface-container rounded-lg pl-9 pr-4 py-2.5 border border-outline-variant/30 focus:outline-none"
+                    />
+                  </div>
                 </div>
-              </div>
+
+                {/* Password */}
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-bold text-on-surface-variant uppercase">Password *</label>
+                    {isLogin && (
+                      <Link href="/forgot-password" className="text-[10px] font-bold text-primary hover:underline">
+                        Forgot password?
+                      </Link>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
+                      <Lock className="w-4 h-4" />
+                    </span>
+                    <input
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full text-xs bg-surface-container rounded-lg pl-9 pr-4 py-2.5 border border-outline-variant/30 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Confirm Password (Signup only) */}
+                {!isLogin && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-on-surface-variant uppercase">Confirm Password *</label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-on-surface-variant">
+                        <Lock className="w-4 h-4" />
+                      </span>
+                      <input
+                        type="password"
+                        required
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full text-xs bg-[#0b0f19]/30 rounded-lg pl-9 pr-4 py-2.5 border border-outline-variant/30 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {/* Action button */}
@@ -352,7 +425,7 @@ export default function LoginPage() {
                 <span>Processing auth request...</span>
               ) : (
                 <>
-                  <span>{isLogin ? 'Sign In' : 'Create Merchant Account'}</span>
+                  <span>{isLogin ? 'Sign In' : (showOtpScreen ? 'Confirm & Verify Signup' : 'Create Merchant Account')}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
