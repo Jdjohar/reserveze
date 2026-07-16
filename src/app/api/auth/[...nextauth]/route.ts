@@ -1,7 +1,5 @@
 import NextAuth from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
-import FacebookProvider from 'next-auth/providers/facebook';
-import AppleProvider from 'next-auth/providers/apple';
 import { connectToDatabase } from '@/lib/db';
 import { User, Business, Employee } from '@/models';
 
@@ -14,14 +12,6 @@ const handler = NextAuth({
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || 'dummy_id',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || 'dummy_secret',
-    }),
-    FacebookProvider({
-      clientId: process.env.FACEBOOK_CLIENT_ID || 'dummy_id',
-      clientSecret: process.env.FACEBOOK_CLIENT_SECRET || 'dummy_secret',
-    }),
-    AppleProvider({
-      clientId: process.env.APPLE_CLIENT_ID || 'dummy_id',
-      clientSecret: process.env.APPLE_CLIENT_SECRET || 'dummy_secret',
     }),
   ],
   callbacks: {

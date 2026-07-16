@@ -101,6 +101,15 @@ export default function MerchantPlansPage() {
                 setSuccess(`Successfully verified checkout session! Purchased ${creditsNum} Booking Credits for $${priceNum}!`);
                 fetchTransactions();
                 window.dispatchEvent(new Event('storage'));
+
+                // GTM conversion goals tracking
+                (window as any).dataLayer = (window as any).dataLayer || [];
+                (window as any).dataLayer.push({
+                  event: transactions.length === 0 ? 'paid_signup' : 'subscription_renewal',
+                  credits: creditsNum,
+                  amount: priceNum,
+                  currency: 'USD'
+                });
               }
             } catch (err) {}
           };
@@ -121,6 +130,14 @@ export default function MerchantPlansPage() {
                   fetchBusiness();
                   fetchTransactions();
                   window.dispatchEvent(new Event('storage'));
+
+                  // GTM conversion goals tracking
+                  (window as any).dataLayer = (window as any).dataLayer || [];
+                  (window as any).dataLayer.push({
+                    event: transactions.length === 0 ? 'paid_signup' : 'subscription_renewal',
+                    amount: data.amount || 30, // Fallback to growth tier price
+                    currency: 'USD'
+                  });
                 } else {
                   setError(data.error || 'Failed to verify checkout session.');
                 }
