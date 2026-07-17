@@ -8,9 +8,12 @@ export function proxy(request: NextRequest) {
 
   // Only perform redirects in production
   if (process.env.NODE_ENV === 'production') {
-    if (isWww || isHttp) {
+    const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
+    const isVercelPreview = host.endsWith('.vercel.app');
+
+    if (!isLocalhost && !isVercelPreview && (!isWww || isHttp)) {
       const cleanHost = host.replace(/^www\./, '');
-      const secureUrl = `https://${cleanHost}${request.nextUrl.pathname}${request.nextUrl.search}`;
+      const secureUrl = `https://www.${cleanHost}${request.nextUrl.pathname}${request.nextUrl.search}`;
       
       // Return 301 Permanent Redirect
       return NextResponse.redirect(secureUrl, 301);
