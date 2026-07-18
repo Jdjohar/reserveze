@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     });
 
     // Send welcome email to user
-    await sendEmail({
+    const userEmailResult = await sendEmail({
       to: cleanEmail,
       subject: 'Welcome to the Reserveze Waitlist!',
       html: `
@@ -67,10 +67,13 @@ export async function POST(req: Request) {
         </div>
       `
     });
+    console.log(`[Waitlist API] User email send result for ${cleanEmail}:`, userEmailResult);
 
     // Send alert email to admin
-    const adminEmail = process.env.SMTP_USER || 'info@reserveze.com';
-    await sendEmail({
+    const adminEmail = process.env.ADMIN_EMAIL || 
+      ((process.env.SMTP_USER && process.env.SMTP_USER.includes('@')) ? process.env.SMTP_USER : 'info@reserveze.com');
+
+    const adminEmailResult = await sendEmail({
       to: adminEmail,
       subject: `New Waitlist Signup: ${name}`,
       html: `
@@ -79,7 +82,7 @@ export async function POST(req: Request) {
           <p style="font-size: 14px;">A new subscriber has joined the waitlist for Reserveze:</p>
           <div style="background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
             <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-              <tr>
+               <tr>
                 <td style="padding: 6px 0; font-weight: bold; width: 120px; color: #64748b;">Full Name:</td>
                 <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${name}</td>
               </tr>
@@ -96,6 +99,7 @@ export async function POST(req: Request) {
         </div>
       `
     });
+    console.log(`[Waitlist API] Admin email send result for ${adminEmail}:`, adminEmailResult);
 
     return NextResponse.json({
       success: true,
